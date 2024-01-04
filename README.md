@@ -1,6 +1,12 @@
-# ForkTest - A Paper fork, using paperweight
+<div align="center">
+    <img src="https://s2.coinmarketcap.com/static/img/coins/64x64/10804.png" alt="Purpur">
+    
+# Floki - A Paper fork, using paperweight
+</div>
 
-This is an example project, showcasing how to setup a fork of Paper (or any other fork using paperweight), using paperweight.
+This is the 1.20.4 paper fork, powered by floki!
+
+Basically ignore everything below just use `applyPatches` and `createReobfPaperclipJar`
 
 The files of most interest are
 - build.gradle.kts

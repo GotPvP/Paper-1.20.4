@@ -1,0 +1,809 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hihihih565 <daniel.n.peck@me.com>
+Date: Mon, 13 May 2024 09:00:33 +0100
+Subject: [PATCH] (FlokiPaper) the birth of floki paper
+
+
+diff --git a/src/main/java/com/ngxdev/SilverConfig.java b/src/main/java/com/ngxdev/SilverConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..4c12c05adf872b397c617c6188e9357abe135b01
+--- /dev/null
++++ b/src/main/java/com/ngxdev/SilverConfig.java
+@@ -0,0 +1,69 @@
++package com.ngxdev;
++
++public class SilverConfig {
++    public static boolean lavaFishing = false;
++
++    // No saving, fast shutdown routine, no persistence.
++    public static boolean virtualMode = System.getProperty("virtualMode") != null;
++
++    // Distance before AI is disabled.
++    public static int aiTickDistance = 32;
++
++    // Maximum amount of chunks to handle for attempting to spawn mobs.
++    public static int mobChunkSpawnsPerTick = 8;
++
++    // Maximum amount of chunks to handle for attempting to handle weather.
++    public static int weatherChunksPerTick = 1;
++
++    // so every 10+10 blocks, the entities will tick half as less for intensive parts of the tick, 20 = 1/2, 40 = 1/4.
++    public static int tickSegmentation = 10;
++
++    // same as above, but for aiStep
++    public static int aiStepSegmentation = 10;
++
++    // don't spend too long searching for a goal and other opts
++    public static boolean smartGoals = true;
++
++    // Limit the amount of complexity pathfinding can have (navigating mazes is typically not required).
++    public static int pathFindingLimit = 5;
++
++    // If entity collisions should be segmentated
++    public static boolean pushEntitiesSegmentation = true;
++
++    // Distance for a full ai tick to occur.
++    public static int aiTickSegmentation = 5;
++
++    // Segment chunk ticks same as above
++    public static int chunkTickSegmentation = 32;
++
++    // Segment tracking ticks same as above
++    public static int trackingTickSegmentation = 16;
++
++    // How many ticks for ai to sense its surroundings.
++    public static int aiSensorSegmentation = 10;
++
++    // How many ticks the entity should be activated for when activated.
++    public static int activationRangeTicks = 20;
++
++    // How many ticks a player has to wait before activating entities again.
++    public static int activationTimeout = 5;
++
++    // How many ticks before entities are activated again.
++    public static int activationCheck = 10;
++
++    // How many ticks a player has to wait before attempting to spawn mobs again.
++    public static int spawnAttemptTimeout = 2;
++
++    // What is the radius the entities should be attempted to be spawned in.
++    public static int spawnAttemptRadius = 6;
++
++    // How many spawn attempts should there be for each mob.
++    public static int spawnAttemptAttempts = 2;
++
++    // Time in milliseconds before packet queue is sent to players.
++    public static int nettyFlushInterval = 5;
++
++    public static boolean spawningEnabled = true;
++    public static boolean disableBeaconTicker = false;
++    public static boolean disableSpawnerTicker = false;
++}
+diff --git a/src/main/java/io/papermc/paper/registry/RegistryKey.java b/src/main/java/io/papermc/paper/registry/RegistryKey.java
+index c4b30b16ce4db754b958c493ad86d0863592c263..9f3b596792c16712225a21f8a9cbbe21d8567cb9 100644
+--- a/src/main/java/io/papermc/paper/registry/RegistryKey.java
++++ b/src/main/java/io/papermc/paper/registry/RegistryKey.java
+@@ -32,12 +32,12 @@ public sealed interface RegistryKey<T> extends Keyed permits RegistryKeyImpl {
+      * ******************* */
+     /**
+      * Built-in registry for game events
+-     * @see io.papermc.paper.registry.keys.GameEventKeys
++     //* @see io.papermc.paper.registry.keys.GameEventKeys
+      */
+     RegistryKey<GameEvent> GAME_EVENT = create("game_event");
+     /**
+      * Built-in registry for structure types.
+-     * @see io.papermc.paper.registry.keys.StructureTypeKeys
++     //* @see io.papermc.paper.registry.keys.StructureTypeKeys
+      */
+     RegistryKey<StructureType> STRUCTURE_TYPE = create("worldgen/structure_type");
+ 
+@@ -46,22 +46,22 @@ public sealed interface RegistryKey<T> extends Keyed permits RegistryKeyImpl {
+      * ********************** */
+     /**
+      * Data-driven registry for biomes.
+-     * @see io.papermc.paper.registry.keys.BiomeKeys
++     //* @see io.papermc.paper.registry.keys.BiomeKeys
+      */
+     RegistryKey<Biome> BIOME = create("worldgen/biome");
+     /**
+      * Data-driven registry for structures.
+-     * @see io.papermc.paper.registry.keys.StructureKeys
++     //* @see io.papermc.paper.registry.keys.StructureKeys
+      */
+     RegistryKey<Structure> STRUCTURE = create("worldgen/structure");
+     /**
+      * Data-driven registry for trim materials.
+-     * @see io.papermc.paper.registry.keys.TrimMaterialKeys
++     //* @see io.papermc.paper.registry.keys.TrimMaterialKeys
+      */
+     RegistryKey<TrimMaterial> TRIM_MATERIAL = create("trim_material");
+     /**
+      * Data-driven registry for trim patterns.
+-     * @see io.papermc.paper.registry.keys.TrimPatternKeys
++     //* @see io.papermc.paper.registry.keys.TrimPatternKeys
+      */
+     RegistryKey<TrimPattern> TRIM_PATTERN = create("trim_pattern");
+ }
+diff --git a/src/main/java/org/bukkit/ArkJSRegistryHook.java b/src/main/java/org/bukkit/ArkJSRegistryHook.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..34b8c97b5668eda2a72c7eb58e2db0fba14d3153
+--- /dev/null
++++ b/src/main/java/org/bukkit/ArkJSRegistryHook.java
+@@ -0,0 +1,56 @@
++package org.bukkit;
++
++import org.bukkit.entity.Player;
++import org.jetbrains.annotations.NotNull;
++
++public interface ArkJSRegistryHook {
++
++  /**
++   * getDouble
++   * @param plr
++   * @param key
++   * @return
++   */
++  double getDouble(@NotNull Player plr, @NotNull String key);
++
++  /**
++   * getInt
++   * @param plr
++   * @param key
++   * @return
++   */
++  int getInt(@NotNull Player plr, @NotNull String key);
++
++  /**
++   * getString
++   * @param plr
++   * @param key
++   * @return
++   */
++  @NotNull
++  String getString(@NotNull Player plr, @NotNull String key);
++
++  /**
++   * setDouble
++   * @param plr
++   * @param key
++   * @param value
++   */
++  void setDouble(@NotNull Player plr, @NotNull String key, @NotNull double value);
++
++  /**
++   * setInt
++   * @param plr
++   * @param key
++   * @param value
++   */
++  void setInt(@NotNull Player plr, @NotNull String key, @NotNull int value);
++
++  /**
++   * setString
++   * @param plr
++   * @param key
++   * @param value
++   */
++  void setString(@NotNull Player plr, @NotNull String key, @NotNull String value);
++}
+diff --git a/src/main/java/org/bukkit/AsyncEvent.java b/src/main/java/org/bukkit/AsyncEvent.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..03845f66bb405f7aa91564f11ba338165fdac2e4
+--- /dev/null
++++ b/src/main/java/org/bukkit/AsyncEvent.java
+@@ -0,0 +1,77 @@
++package org.bukkit;
++
++import org.bukkit.event.Cancellable;
++import org.bukkit.event.Event;
++import org.bukkit.event.HandlerList;
++import org.jetbrains.annotations.NotNull;
++
++public class AsyncEvent extends Event implements Cancellable {
++  private static final HandlerList handlers = new HandlerList();
++  private final String eventName;
++  private final Object data;
++  private boolean cancelled = false;
++
++  /**
++   * AsyncEvent
++   * @param eventName
++   * @param data
++   */
++  public AsyncEvent(@NotNull String eventName, @NotNull Object data) {
++    super(true);
++    this.eventName = eventName;
++    this.data = data;
++  }
++
++  /**
++   * handleList
++   * @return
++   */
++  @NotNull
++  public static HandlerList getHandlerList() {
++    return handlers;
++  }
++
++  /**
++   * getEventName
++   * @return
++   */
++  @NotNull
++  @Override
++  public String getEventName() {
++    return eventName;
++  }
++
++  /**
++   * getData
++   * @return
++   */
++  @NotNull
++  public Object getData() {
++    return data;
++  }
++
++  /**
++   * isCancelled
++   * @return
++   */
++  public boolean isCancelled() {
++    return this.cancelled;
++  }
++
++  /**
++   * setCancelled
++   * @param b
++   */
++  public void setCancelled(boolean b) {
++    this.cancelled = b;
++  }
++
++  /**
++   * getHandlers
++   * @return
++   */
++  @NotNull
++  public HandlerList getHandlers() {
++    return handlers;
++  }
++}
+diff --git a/src/main/java/org/bukkit/DataStorage.java b/src/main/java/org/bukkit/DataStorage.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..a762fa7a54884c3f995ac9389962594a17180482
+--- /dev/null
++++ b/src/main/java/org/bukkit/DataStorage.java
+@@ -0,0 +1,43 @@
++package org.bukkit;
++
++import org.jetbrains.annotations.NotNull;
++
++import java.util.HashMap;
++
++public class DataStorage {
++  public static ArkJSRegistryHook arkJSRegistry;
++  private static final HashMap<String, String> data = new HashMap<>();
++
++  /**
++   * get
++   * @param plugin
++   * @param key
++   * @return
++   */
++  @NotNull
++  public static String get(@NotNull String plugin, @NotNull String key) {
++    return data.get(plugin + ":" + key);
++  }
++
++  /**
++   * getOrDefault
++   * @param plugin
++   * @param key
++   * @param def
++   * @return
++   */
++  @NotNull
++  public static String getOrDefault(@NotNull String plugin, @NotNull String key, @NotNull String def) {
++    return data.getOrDefault(plugin + ":" + key, def);
++  }
++
++  /**
++   * set
++   * @param plugin
++   * @param key
++   * @param value
++   */
++  public static void set(@NotNull String plugin, @NotNull String key, @NotNull String value) {
++    data.put(plugin + ":" + key, value);
++  }
++}
+diff --git a/src/main/java/org/bukkit/MySQLDatabase.java b/src/main/java/org/bukkit/MySQLDatabase.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..75fcf39a341921ed57d4bf4c9f6f1d6fd39d3ba7
+--- /dev/null
++++ b/src/main/java/org/bukkit/MySQLDatabase.java
+@@ -0,0 +1,243 @@
++package org.bukkit;
++
++import org.bukkit.configuration.ConfigurationSection;
++import org.jetbrains.annotations.NotNull;
++
++import java.sql.*;
++
++/**
++ * Class representing a MySQL storage connection and containing the required methods and utils
++ * for executing MySQL queries
++ */
++public class MySQLDatabase {
++    public String table;
++    private Connection con;
++    private String database;
++    private String host;
++    private String password;
++    private int timeout = 10000;
++    private String username;
++
++    public MySQLDatabase() {
++
++    }
++
++    /**
++     * @param host     - The host of the MySQL server
++     * @param database - The name of the database
++     * @param username - The username to the MySQL server
++     * @param password - The password to the MySQL server
++     * @param table    - The table used in the querries
++     */
++    @NotNull
++    public MySQLDatabase(@NotNull String host, @NotNull String database, @NotNull String username, @NotNull String password, @NotNull String table) {
++        this.host = host;
++        this.username = username;
++        this.password = password;
++        this.database = database;
++        this.table = table;
++        openConnection();
++    }
++
++    /**
++     * mysql
++     *
++     * @param mysql
++     */
++    @NotNull
++    public MySQLDatabase(@NotNull ConfigurationSection mysql) {
++        this(mysql.getString("host"), mysql.getString("database"), mysql.getString("username"), mysql.getString("password"), mysql.getString("table"));
++    }
++
++    /**
++     * close
++     */
++    public void close() {
++        try {
++            if (con != null)
++                con.close();
++        } catch (SQLException e) {
++            e.printStackTrace();
++        }
++    }
++
++    /**
++     * command
++     *
++     * @param cmd
++     * @param args
++     * @return
++     */
++    public boolean command(@NotNull String cmd, @NotNull Object... args) {
++        try (PreparedStatement st = prepare(cmd, args)) {
++            return st.execute();
++        } catch (Throwable e) {
++            e.printStackTrace();
++        }
++        return false;
++    }
++
++    /**
++     * @return - The Connection
++     */
++    public Connection getConnection() {
++        try {
++            if (con == null || !con.isValid(timeout)) {
++                openConnection();
++            }
++        } catch (Throwable e) {
++            e.printStackTrace();
++        }
++        return con;
++    }
++
++    /**
++     * Opens the MySQL connection
++     */
++    private void openConnection() {
++        try {
++            if (con != null)
++                con.close();
++            con = DriverManager.getConnection("jdbc:mysql://" + host + "/" + database + "?autoReconnect=true&useSSL=false", username, password);
++            //con.setAutoReconnect(true);
++            //con.setConnectTimeout(timeout);
++        } catch (Throwable e) {
++            e.printStackTrace();
++        }
++    }
++
++    /**
++     * prepare
++     *
++     * @param cmd
++     * @param args
++     * @return
++     * @throws Throwable
++     */
++    private PreparedStatement prepare(String cmd, Object... args) throws Throwable {
++        PreparedStatement st = getConnection().prepareStatement(cmd);
++        for (int i = 0; i < args.length; ++i) {
++            if (args[i] instanceof Boolean) {
++                st.setObject(i + 1, ((Boolean) args[i]) ? 1 : 0);
++            } else {
++                st.setObject(i + 1, args[i] instanceof Enum ? ((Enum) args[i]).name() : String.valueOf(args[i]));
++            }
++        }
++        return st;
++    }
++
++    /**
++     * prepareGeneratedKeys
++     *
++     * @param cmd
++     * @param args
++     * @return
++     * @throws Throwable
++     */
++    private PreparedStatement prepareGeneratedKeys(String cmd, Object... args) throws Throwable {
++        PreparedStatement st = getConnection().prepareStatement(cmd, Statement.RETURN_GENERATED_KEYS);
++        for (int i = 0; i < args.length; ++i) {
++            if (args[i] instanceof Boolean) {
++                st.setObject(i + 1, ((Boolean) args[i]) ? 1 : 0);
++            } else {
++                st.setObject(i + 1, args[i] instanceof Enum ? ((Enum) args[i]).name() : String.valueOf(args[i]));
++            }
++        }
++        return st;
++    }
++
++    /**
++     * query
++     *
++     * @param cmd
++     * @param rh
++     * @param args
++     */
++    public void query(@NotNull String cmd, @NotNull ResultHandler rh, @NotNull Object... args) {
++        try (PreparedStatement st = prepare(cmd, args)) {
++            try (ResultSet rs = st.executeQuery()) {
++                rh.handle(rs);
++            }
++        } catch (Throwable err) {
++            err.printStackTrace();
++        }
++    }
++
++    /**
++     * update
++     *
++     * @param cmd
++     * @return
++     */
++    public int update(@NotNull String cmd) {
++        try (PreparedStatement st = getConnection().prepareStatement(cmd)) {
++            return st.executeUpdate();
++        } catch (Throwable e) {
++            e.printStackTrace();
++            return 0;
++        }
++    }
++
++    /**
++     * update
++     *
++     * @param cmd
++     * @return
++     */
++    public int updateKeys(@NotNull String cmd) {
++        try (PreparedStatement st = getConnection().prepareStatement(cmd)) {
++            st.executeUpdate();
++            ResultSet resultSet = st.getGeneratedKeys();
++            if (resultSet.next()) {
++                return resultSet.getInt(1);
++            } else {
++                return -1;
++            }
++        } catch (Throwable e) {
++            e.printStackTrace();
++            return 0;
++        }
++    }
++
++    /**
++     * update
++     *
++     * @param cmd
++     * @param args
++     * @return
++     */
++    public int updateKeys(@NotNull String cmd, @NotNull Object... args) {
++        try (PreparedStatement st = prepareGeneratedKeys(cmd, args)) {
++            st.executeUpdate();
++            ResultSet resultSet = st.getGeneratedKeys();
++            if (resultSet.next()) {
++                return resultSet.getInt(1);
++            } else {
++                return -1;
++            }
++        } catch (Throwable e) {
++            e.printStackTrace();
++            return 0;
++        }
++    }
++
++    /**
++     * update
++     *
++     * @param cmd
++     * @param args
++     * @return
++     */
++    public int update(@NotNull String cmd, @NotNull Object... args) {
++        try (PreparedStatement st = prepare(cmd, args)) {
++            return st.executeUpdate();
++        } catch (Throwable e) {
++            e.printStackTrace();
++            return 0;
++        }
++    }
++
++    public String getDatabase() {
++        return database;
++    }
++}
+diff --git a/src/main/java/org/bukkit/ResultHandler.java b/src/main/java/org/bukkit/ResultHandler.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8eab442e13ffe6f97158fc0ae6562351ca41b8e6
+--- /dev/null
++++ b/src/main/java/org/bukkit/ResultHandler.java
+@@ -0,0 +1,15 @@
++package org.bukkit;
++
++import org.jetbrains.annotations.NotNull;
++
++import java.sql.ResultSet;
++
++public interface ResultHandler {
++
++  /**
++   * handle
++   * @param rs
++   * @throws Throwable
++   */
++  void handle(@NotNull ResultSet rs) throws Throwable;
++}
+diff --git a/src/main/java/org/bukkit/SyncedDataStorage.java b/src/main/java/org/bukkit/SyncedDataStorage.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..89bf289eaa15b8db49994a5e29d320ca385d5657
+--- /dev/null
++++ b/src/main/java/org/bukkit/SyncedDataStorage.java
+@@ -0,0 +1,86 @@
++package org.bukkit;
++
++import org.jetbrains.annotations.NotNull;
++
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.function.Consumer;
++
++import static java.lang.Integer.parseInt;
++
++public class SyncedDataStorage {
++  public static MySQLDatabase mySQL = new MySQLDatabase(Bukkit.spigot().getSpigotConfig().getConfigurationSection("datasync.mysql"));
++  public static String server = Bukkit.spigot().getConfig().getString("datasync.server");
++  public static ExecutorService async = Executors.newSingleThreadExecutor();
++
++  static {
++    System.out.println("[SyncedDataStorage] Initialized, server name = " + server);
++    async.submit(() ->
++        mySQL.command("CREATE TABLE IF NOT EXISTS `" + mySQL.table + "` (`server` VARCHAR(16), `key` TINYTEXT, `value` TEXT)")
++    );
++  }
++
++  /**
++   * get
++   * @param server
++   * @param plugin
++   * @param key
++   * @param def
++   * @return
++   */
++  @NotNull
++  public static String get(@NotNull String server, @NotNull String plugin, @NotNull String key, @NotNull String def) {
++    String dbKey = plugin + ":" + key;
++    String[] out = new String[]{def};
++    mySQL.query("SELECT `value` FROM `" + mySQL.table + "` WHERE `server` = ? AND `key` = ? LIMIT 1", (rs) -> {
++      if (rs.next())
++        out[0] = rs.getString(1);
++    }, server, dbKey);
++    return out[0];
++  }
++
++  /**
++   * set
++   * @param plugin
++   * @param key
++   * @param value
++   */
++  public static void set(@NotNull String plugin, @NotNull String key, @NotNull String value) {
++    DataStorage.set(plugin, key, value);
++    String dbKey = plugin + ":" + key;
++    async.submit(() -> {
++      if (mySQL.update("UPDATE `" + mySQL.table + "` SET `value` = ? WHERE `server` = ? AND `key` = ? LIMIT 1", value, server, dbKey) == 0)
++        mySQL.command("INSERT INTO `" + mySQL.table + "` VALUES (?, ?, ?)", server, dbKey, value);
++    });
++  }
++
++  /**
++   * sum
++   * @param plugin
++   * @param key
++   * @param con
++   */
++  public static void sum(@NotNull String plugin, @NotNull String key, @NotNull Consumer<Integer> con) {
++    String dbKey = plugin + ":" + key;
++    async.submit(() ->
++        mySQL.query("SELECT `value` FROM `" + mySQL.table + "` WHERE `key` = ? ",
++            (rs) -> {
++              int out = 0;
++              while (rs.next())
++                out += parseInt(rs.getString(1));
++              con.accept(out);
++            }, dbKey));
++  }
++
++  /**
++   * shutdown
++   */
++  public static void shutdown() {
++    async.submit(() -> {
++      System.out.println("[SyncedDataStorage] Shutting down...");
++      mySQL.command("DELETE FROM `" + mySQL.table + "` WHERE `server` = ?", server);
++      mySQL.close();
++    });
++    async.shutdown();
++  }
++}
+diff --git a/src/main/java/org/bukkit/event/player/PlayerFishEvent.java b/src/main/java/org/bukkit/event/player/PlayerFishEvent.java
+index d4001f64a7ee9d5173e9bafd9c45860cbda1fc85..bfc48d4a8972579aac2745ad5bbad8c0efa82376 100644
+--- a/src/main/java/org/bukkit/event/player/PlayerFishEvent.java
++++ b/src/main/java/org/bukkit/event/player/PlayerFishEvent.java
+@@ -21,7 +21,7 @@ public class PlayerFishEvent extends PlayerEvent implements Cancellable {
+     private final FishHook hookEntity;
+     private final EquipmentSlot hand;
+ 
+-    public PlayerFishEvent(@NotNull final Player player, @Nullable final Entity entity, @NotNull final FishHook hookEntity, @Nullable EquipmentSlot hand, @NotNull final State state) {
++    public PlayerFishEvent(@NotNull final Player player, @Nullable final Entity entity, @NotNull final FishHook hookEntity, @Nullable EquipmentSlot hand, @NotNull final State state, boolean isLava) {
+         super(player);
+         this.entity = entity;
+         this.hookEntity = hookEntity;
+@@ -29,6 +29,10 @@ public class PlayerFishEvent extends PlayerEvent implements Cancellable {
+         this.state = state;
+     }
+ 
++    public PlayerFishEvent(@NotNull final Player player, @Nullable final Entity entity, @NotNull final FishHook hookEntity, @NotNull final State state, boolean isLava) { // Focal
++        this(player, entity, hookEntity, null, state, isLava);
++    }
++
+     public PlayerFishEvent(@NotNull final Player player, @Nullable final Entity entity, @NotNull final FishHook hookEntity, @NotNull final State state) {
+         this(player, entity, hookEntity, null, state);
+     }
+diff --git a/src/main/java/org/bukkit/event/player/PlayerTeleportEvent.java b/src/main/java/org/bukkit/event/player/PlayerTeleportEvent.java
+index ccfb08af8c57ddac3062c2cec28d7ff428082709..e379f1a207a2790a61a3a20784c15b08d1f75513 100644
+--- a/src/main/java/org/bukkit/event/player/PlayerTeleportEvent.java
++++ b/src/main/java/org/bukkit/event/player/PlayerTeleportEvent.java
+@@ -49,6 +49,14 @@ public class PlayerTeleportEvent extends PlayerMoveEvent {
+     }
+ 
+     public enum TeleportCause {
++        /**
++         * Indicates the teleportation was caused by MultiBridge
++         */
++        MULTIBRIDGE,
++        /**
++        * Indicates the teleportation was caused by MultiBridge and to set back location
++        */
++        MULTIBRIDGE_BACK,
+         /**
+          * Indicates the teleporation was caused by a player throwing an Ender
+          * Pearl
+diff --git a/src/main/java/org/bukkit/event/world/WorldTickEvent.java b/src/main/java/org/bukkit/event/world/WorldTickEvent.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..b52c429687ac4fef81baca50f1a739082014560e
+--- /dev/null
++++ b/src/main/java/org/bukkit/event/world/WorldTickEvent.java
+@@ -0,0 +1,21 @@
++package org.bukkit.event.world;
++
++import org.bukkit.World;
++import org.bukkit.event.HandlerList;
++import org.jetbrains.annotations.NotNull;
++
++public class WorldTickEvent extends WorldEvent {
++    private static final HandlerList handlers = new HandlerList();
++
++    public WorldTickEvent(@NotNull World world) {
++        super(world);
++    }
++
++    public @NotNull HandlerList getHandlers() {
++        return handlers;
++    }
++
++    public static @NotNull HandlerList getHandlerList() {
++        return handlers;
++    }
++}
+diff --git a/src/main/java/org/bukkit/plugin/RegisteredListener.java b/src/main/java/org/bukkit/plugin/RegisteredListener.java
+index 3b3d9642a8d63798dc28f2f8df77f0466451cbff..6e87b6ea64683ce6dc50277e5366643c67dc60f6 100644
+--- a/src/main/java/org/bukkit/plugin/RegisteredListener.java
++++ b/src/main/java/org/bukkit/plugin/RegisteredListener.java
+@@ -5,8 +5,13 @@ import org.bukkit.event.Event;
+ import org.bukkit.event.EventException;
+ import org.bukkit.event.EventPriority;
+ import org.bukkit.event.Listener;
++import org.bukkit.event.player.PlayerEvent;
+ import org.jetbrains.annotations.NotNull;
+ 
++import java.util.ArrayList;
++import java.util.List;
++import java.util.UUID;
++
+ /**
+  * Stores relevant information for plugin listeners
+  */
+@@ -16,6 +21,9 @@ public class RegisteredListener {
+     private final Plugin plugin;
+     private final EventExecutor executor;
+     private final boolean ignoreCancelled;
++    public static boolean ecReport;
++    public static List<UUID> detectPlayerEvents = new ArrayList<>();
++
+ 
+     public RegisteredListener(@NotNull final Listener listener, @NotNull final EventExecutor executor, @NotNull final EventPriority priority, @NotNull final Plugin plugin, final boolean ignoreCancelled) {
+         this.listener = listener;
+@@ -62,12 +70,25 @@ public class RegisteredListener {
+      * @throws EventException If an event handler throws an exception.
+      */
+     public void callEvent(@NotNull final Event event) throws EventException {
+-        if (event instanceof Cancellable) {
++        boolean cancelled = event instanceof Cancellable && ((Cancellable) event).isCancelled();
++        if (cancelled && ignoreCancelled) {
++            return;
++        }
++        executor.execute(this.listener, event);
++        boolean cancelled2 = event instanceof Cancellable && ((Cancellable) event).isCancelled();
++        if (!cancelled && cancelled2) {
++            if(ecReport) {
++                System.out.println(plugin.getName() + " - " + listener.getClass().getName() + " - cancelled " + event.getClass().getName());
++            } else if(event instanceof PlayerEvent playerEvent && detectPlayerEvents.contains(playerEvent.getPlayer().getUniqueId())) {
++                System.out.println(plugin.getName() + " -  " + playerEvent.getPlayer().getName() + " - " + listener.getClass().getName() + " - cancelled " + event.getClass().getName());
++            }
++        }
++        /*if (event instanceof Cancellable) {
+             if (((Cancellable) event).isCancelled() && isIgnoringCancelled()) {
+                 return;
+             }
+         }
+-        executor.execute(listener, event);
++        executor.execute(listener, event);*/
+     }
+ 
+     /**

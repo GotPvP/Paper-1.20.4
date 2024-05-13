@@ -1,0 +1,1247 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hihihih565 <daniel.n.peck@me.com>
+Date: Mon, 13 May 2024 09:00:32 +0100
+Subject: [PATCH] (FlokiPaper) the birth of floki paper
+
+
+diff --git a/src/main/java/com/ngxdev/ItemStackArrayList.java b/src/main/java/com/ngxdev/ItemStackArrayList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..98c9a269bc462ad685856068d30cf0c25b5913ea
+--- /dev/null
++++ b/src/main/java/com/ngxdev/ItemStackArrayList.java
+@@ -0,0 +1,113 @@
++package com.ngxdev;
++
++import net.minecraft.core.NonNullList;
++import net.minecraft.world.item.ItemStack;
++import org.apache.commons.lang.Validate;
++import org.jetbrains.annotations.NotNull;
++
++import java.util.AbstractList;
++import java.util.Arrays;
++import java.util.List;
++
++public class ItemStackArrayList extends AbstractList<ItemStack> {
++    public static ItemStackArrayList fromList(List<ItemStack> list) {
++        if (list instanceof ItemStackArrayList ours) {
++            return ours;
++        }
++        return new ItemStackArrayList(list);
++    }
++
++    private static ItemStack[] createArray(int size) {
++        ItemStack[] array = new ItemStack[size];
++        Arrays.fill(array, ItemStack.EMPTY);
++        return array;
++    }
++
++    private final ItemStack[] items;
++
++    private long bitSet = 0;
++    private final long allBits;
++
++    private static class OurNonNullList extends NonNullList<ItemStack> {
++        protected OurNonNullList(List<ItemStack> delegate) {
++            super(delegate, ItemStack.EMPTY);
++        }
++    }
++
++    public final NonNullList<ItemStack> nonNullList = new OurNonNullList(this);
++
++    private ItemStackArrayList(List<ItemStack> list) {
++        this(list.size());
++
++        for (int i = 0; i < list.size(); i++) {
++            this.set(i, list.get(i));
++        }
++    }
++
++    public ItemStackArrayList(int size) {
++        Validate.isTrue(size < Long.BYTES * 8, "size is too large");
++
++        this.items = createArray(size);
++        this.allBits = ((1L << size) - 1);
++    }
++
++    public boolean isCompletelyEmpty() {
++        return this.bitSet == 0;
++    }
++
++    public boolean hasFullStacks() {
++        return (this.bitSet & this.allBits) == allBits;
++    }
++
++    @Override
++    public ItemStack set(int index, @NotNull ItemStack itemStack) {
++        ItemStack existing = this.items[index];
++
++        this.items[index] = itemStack;
++
++        if (itemStack == ItemStack.EMPTY) {
++            this.bitSet &= ~(1L << index);
++        } else {
++            this.bitSet |= 1L << index;
++        }
++
++        return existing;
++    }
++
++    @NotNull
++    @Override
++    public ItemStack get(int var0) {
++        return this.items[var0];
++    }
++
++    @Override
++    public int size() {
++        return this.items.length;
++    }
++
++    @Override
++    public void clear() {
++        Arrays.fill(this.items, ItemStack.EMPTY);
++    }
++
++    // these are unsupported for block inventories which have a static size
++    @Override
++    public void add(int var0, ItemStack var1) {
++        throw new UnsupportedOperationException();
++    }
++
++    @Override
++    public ItemStack remove(int var0) {
++        throw new UnsupportedOperationException();
++    }
++
++    @Override
++    public String toString() {
++        return "ItemListWithBitset{" +
++          "items=" + Arrays.toString(items) +
++          ", bitSet=" + Long.toString(bitSet, 2) +
++          ", allBits=" + Long.toString(allBits, 2) +
++          ", size=" + this.items.length +
++          '}';
++    }
++}
+diff --git a/src/main/java/com/ngxdev/MultithreadedTracker.java b/src/main/java/com/ngxdev/MultithreadedTracker.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..28a30b266afc7a1f56d9adb0957e16c132c7caee
+--- /dev/null
++++ b/src/main/java/com/ngxdev/MultithreadedTracker.java
+@@ -0,0 +1,124 @@
++package com.ngxdev;
++
++import io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet;
++import net.minecraft.server.MinecraftServer;
++import net.minecraft.server.level.ChunkMap;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.world.entity.Entity;
++import net.minecraft.world.level.chunk.LevelChunk;
++
++import java.util.Map;
++import java.util.concurrent.Executor;
++import java.util.concurrent.Executors;
++import java.util.concurrent.atomic.AtomicInteger;
++
++// THIS IS DESIGNED FOR MAXIMUM PERFORMANCE, NOT USING EXECUTORS!
++public class MultithreadedTracker {
++
++    private enum TrackerStage {
++        UPDATE_PLAYERS,
++        SEND_CHANGES
++    }
++
++    private static final int parallelism = Runtime.getRuntime().availableProcessors() / 2;
++
++    private static final Executor executor = Executors.newFixedThreadPool(parallelism, r -> {
++        Thread thread = new Thread(r);
++        thread.setDaemon(true);
++        thread.setName("Silver - Entity Tracker");
++        return thread;
++    });
++
++    private final IteratorSafeOrderedReferenceSet<LevelChunk> entityTickingChunks;
++    private final AtomicInteger taskIndex = new AtomicInteger();
++
++    private final AtomicInteger tasksCompleted = new AtomicInteger();
++
++    private final ServerLevel level;
++
++    private final Object taskFinishLock = new Object();
++
++    public MultithreadedTracker(ServerLevel level, IteratorSafeOrderedReferenceSet<LevelChunk> entityTickingChunks) {
++        this.level = level;
++        this.entityTickingChunks = entityTickingChunks;
++    }
++
++    public void tick() {
++        int iterator = this.entityTickingChunks.createRawIterator();
++        if (iterator != -1) {
++            try {
++                this.taskIndex.set(iterator);
++                this.tasksCompleted.set(0);
++
++                // announce that there is work to be done
++                for (int i = 0; i < parallelism; i++) {
++                    executor.execute(() -> {
++                        try {
++                            while (handleChunkUpdates()) ;
++                        } finally {
++                            tasksCompleted.getAndIncrement();
++                            synchronized (taskFinishLock) {
++                                taskFinishLock.notifyAll();
++                            }
++                        }
++                    });
++                }
++
++                // wait for work to finish
++                while (this.tasksCompleted.get() != parallelism && !MinecraftServer.getServer().hasStopped()) {
++                    try {
++                        synchronized (taskFinishLock) {
++                            taskFinishLock.wait(0, 100000);
++                        }
++                    } catch (InterruptedException e) {
++                        // check if done
++                    }
++                }
++            } finally {
++                this.entityTickingChunks.finishRawIterator();
++            }
++
++            for (var tracker : level.chunkSource.chunkMap.entityMap.values()) {
++                tracker.serverEntity.sendChanges();
++            }
++        }
++    }
++
++    private boolean handleChunkUpdates() {
++        int index = this.taskIndex.getAndAdd(50);
++        int listSize = this.entityTickingChunks.getListSize();
++        if (index >= listSize) return false;
++
++        int end = Math.min(index + 50, listSize);
++        for (int i = index; i < end; i++) {
++            LevelChunk chunk = this.entityTickingChunks.rawGet(i);
++            if (chunk == null)
++                continue;
++
++            if (chunk.entitySlices == null)
++                chunk.entitySlices = chunk.level.getEntityLookup().getChunk(chunk.locX, chunk.locZ);
++
++            if (chunk.entitySlices == null)
++                continue;
++
++            chunk.entityCount = chunk.entitySlices.entities.size();
++
++            try {
++                Entity[] rawEntities = chunk.entitySlices.entities.getRawData();
++                Map<Integer, ChunkMap.TrackedEntity> entityMap = chunk.level.chunkSource.chunkMap.entityMap;
++
++                for (Entity entity : rawEntities) {
++                    if (entity == null) continue;
++
++                    ChunkMap.TrackedEntity entityTracker = entityMap.get(entity.getId());
++                    if (entityTracker == null) continue;
++
++                    entityTracker.updatePlayers(entityTracker.entity.getPlayersInTrackRange());
++                }
++            } catch (Throwable throwable) {
++                MinecraftServer.LOGGER.warn("Ticking tracker failed", throwable);
++            }
++        }
++        return true;
++    }
++}
+diff --git a/src/main/java/com/ngxdev/PlayerWeather.java b/src/main/java/com/ngxdev/PlayerWeather.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..3cde95c333410697b6fd3cf734ad1406dace6782
+--- /dev/null
++++ b/src/main/java/com/ngxdev/PlayerWeather.java
+@@ -0,0 +1,74 @@
++package com.ngxdev;
++
++import net.minecraft.core.BlockPos;
++import net.minecraft.server.level.ServerChunkCache;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.server.level.ServerPlayer;
++import net.minecraft.world.level.biome.Biome;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.chunk.LevelChunk;
++import net.minecraft.world.level.levelgen.Heightmap;
++
++import java.util.concurrent.ThreadLocalRandom;
++
++public class PlayerWeather {
++    public static void handleForLevel(ServerLevel level) {
++        for (ServerPlayer player : level.players()) {
++            ServerChunkCache source = level.getChunkSource();
++
++            LevelChunk chunk = level.getChunkIfLoaded(player.blockPosition());
++
++            if (chunk == null) {
++                continue;
++            }
++
++            if (level.isRaining()) {
++                int weatherRadius = level.getWorld().getSimulationDistance() + 1;
++
++                if (level.isThundering()) {
++                    // todo
++                }
++
++                for (int i = 0; i < SilverConfig.weatherChunksPerTick; i++) {
++                    int randomX = ThreadLocalRandom.current().nextInt(-weatherRadius, weatherRadius);
++                    int randomZ = ThreadLocalRandom.current().nextInt(-weatherRadius, weatherRadius);
++
++                    LevelChunk weatherChunk = level.getChunkIfLoaded(player.chunkPosition().x + randomX, player.chunkPosition().z + randomZ);
++
++                    if (weatherChunk == null) {
++                        continue;
++                    }
++
++                    BlockPos.MutableBlockPos blockposition = new BlockPos.MutableBlockPos(
++                        (weatherChunk.locX << 4) + ThreadLocalRandom.current().nextInt(15),
++                        0,
++                        (weatherChunk.locZ << 4) + ThreadLocalRandom.current().nextInt(15));
++
++                    int normalY = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING, blockposition.getX() & 15, blockposition.getZ() & 15) + 1;
++                    int downY = normalY - 1;
++                    blockposition.setY(normalY);
++
++                    Biome biomebase = level.getBiome(blockposition).value();
++
++                    blockposition.setY(downY);
++                    if (biomebase.shouldFreeze(level, blockposition)) {
++                        org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(level, blockposition, Blocks.ICE.defaultBlockState(), null);
++                    }
++
++                    blockposition.setY(normalY); // Paper
++                    if (biomebase.shouldSnow(level, blockposition)) {
++                        org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(level, blockposition, Blocks.SNOW.defaultBlockState(), null);
++                    }
++                    blockposition.setY(downY); // Paper
++                    BlockState iblockdata = level.getBlockState(blockposition); // Paper
++                    Biome.Precipitation biomebase_precipitation = biomebase.getPrecipitationAt(blockposition);
++                    if (biomebase_precipitation == Biome.Precipitation.RAIN && biomebase.coldEnoughToSnow(blockposition)) {
++                        biomebase_precipitation = Biome.Precipitation.SNOW;
++                    }
++                    iblockdata.getBlock().handlePrecipitation(iblockdata, level, blockposition, biomebase_precipitation);
++                }
++            }
++        }
++    }
++}
+diff --git a/src/main/java/com/ngxdev/fake/EmptyChannel.java b/src/main/java/com/ngxdev/fake/EmptyChannel.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e827b71a7f1c8a15690ec0057d11239a4a83083
+--- /dev/null
++++ b/src/main/java/com/ngxdev/fake/EmptyChannel.java
+@@ -0,0 +1,102 @@
++package com.ngxdev.fake;
++
++import io.netty.channel.AbstractChannel;
++import io.netty.channel.Channel;
++import io.netty.channel.ChannelConfig;
++import io.netty.channel.ChannelFuture;
++import io.netty.channel.ChannelMetadata;
++import io.netty.channel.ChannelOutboundBuffer;
++import io.netty.channel.ChannelPromise;
++import io.netty.channel.DefaultChannelConfig;
++import io.netty.channel.EventLoop;
++
++import java.net.SocketAddress;
++
++public class EmptyChannel extends AbstractChannel {
++	private final ChannelConfig config = new DefaultChannelConfig(this);
++
++	public EmptyChannel(Channel parent) {
++		super(parent);
++	}
++
++	@Override
++	public ChannelConfig config() {
++		config.setAutoRead(true);
++		return config;
++	}
++
++	@Override
++	protected void doBeginRead() throws Exception {
++	}
++
++	@Override
++	protected void doBind(SocketAddress arg0) throws Exception {
++	}
++
++	@Override
++	protected void doClose() throws Exception {
++	}
++
++	@Override
++	protected void doDisconnect() throws Exception {
++	}
++
++	@Override
++	protected void doWrite(ChannelOutboundBuffer arg0) throws Exception {
++	}
++
++	@Override
++	public boolean isActive() {
++		return false;
++	}
++
++	@Override
++	protected boolean isCompatible(EventLoop arg0) {
++		return true;
++	}
++
++	@Override
++	public boolean isOpen() {
++		return false;
++	}
++
++	@Override
++	protected SocketAddress localAddress0() {
++		return null;
++	}
++
++	@Override
++	public ChannelMetadata metadata() {
++		return new ChannelMetadata(true);
++	}
++
++	@Override
++	protected AbstractUnsafe newUnsafe() {
++		return null;
++	}
++
++	@Override
++	protected SocketAddress remoteAddress0() {
++		return null;
++	}
++
++	@Override
++	public ChannelFuture write(Object msg) {
++		return null;
++	}
++
++	@Override
++	public ChannelFuture write(Object msg, ChannelPromise promise) {
++		return null;
++	}
++
++	@Override
++	public ChannelFuture writeAndFlush(Object msg) {
++		return null;
++	}
++
++	@Override
++	public ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
++		return null;
++	}
++}
+diff --git a/src/main/java/com/ngxdev/fake/FakeEntityPlayer.java b/src/main/java/com/ngxdev/fake/FakeEntityPlayer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..69baaf80c9aca9287a30cf2ad22e65102aa6b35f
+--- /dev/null
++++ b/src/main/java/com/ngxdev/fake/FakeEntityPlayer.java
+@@ -0,0 +1,19 @@
++package com.ngxdev.fake;
++
++import com.mojang.authlib.GameProfile;
++import net.minecraft.server.MinecraftServer;
++import net.minecraft.server.level.ClientInformation;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.server.level.ServerPlayer;
++import net.minecraft.world.level.Level;
++
++public class FakeEntityPlayer extends ServerPlayer {
++    public FakeEntityPlayer(GameProfile profile) {
++        this(profile, MinecraftServer.getServer().getLevel(Level.SPOOF));
++    }
++
++    public FakeEntityPlayer(GameProfile profile, ServerLevel level) {
++        super(MinecraftServer.getServer(), level, profile, ClientInformation.createDefault());
++        connection = new FakePlayerConnection(server, new FakeNetworkManager(), this);
++    }
++}
+diff --git a/src/main/java/com/ngxdev/fake/FakeNetworkManager.java b/src/main/java/com/ngxdev/fake/FakeNetworkManager.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..b340300080201638f050138f9bb4463dde2f3cd1
+--- /dev/null
++++ b/src/main/java/com/ngxdev/fake/FakeNetworkManager.java
+@@ -0,0 +1,30 @@
++package com.ngxdev.fake;
++
++import net.minecraft.network.Connection;
++import net.minecraft.network.protocol.PacketFlow;
++import org.jetbrains.annotations.NotNull;
++
++import java.net.InetAddress;
++import java.net.InetSocketAddress;
++import java.net.SocketAddress;
++
++public class FakeNetworkManager extends Connection {
++    static SocketAddress localhost;
++
++    public FakeNetworkManager() {
++        super(PacketFlow.SERVERBOUND);
++        channel = new EmptyChannel(null);
++    }
++
++    @Override
++    public @NotNull SocketAddress getRemoteAddress() {
++        try {
++            if (localhost == null) {
++                localhost = new InetSocketAddress(InetAddress.getLocalHost(), 0);
++            }
++            return localhost;
++        } catch (Throwable e) {
++            return null;
++        }
++    }
++}
+diff --git a/src/main/java/com/ngxdev/fake/FakePlayerConnection.java b/src/main/java/com/ngxdev/fake/FakePlayerConnection.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..55eacc2eeac5d98aa305bb26711d3f6d794385b2
+--- /dev/null
++++ b/src/main/java/com/ngxdev/fake/FakePlayerConnection.java
+@@ -0,0 +1,26 @@
++package com.ngxdev.fake;
++
++import net.minecraft.network.Connection;
++import net.minecraft.network.PacketSendListener;
++import net.minecraft.network.protocol.Packet;
++import net.minecraft.server.MinecraftServer;
++import net.minecraft.server.level.ClientInformation;
++import net.minecraft.server.level.ServerPlayer;
++import net.minecraft.server.network.ServerGamePacketListenerImpl;
++import org.jetbrains.annotations.Nullable;
++
++public class FakePlayerConnection extends ServerGamePacketListenerImpl {
++    public FakePlayerConnection(MinecraftServer server, Connection connection, ServerPlayer player) {
++        super(server, connection, player, null);
++    }
++
++    @Override
++    public void send(Packet<?> packet) {
++
++    }
++
++    @Override
++    public void send(Packet<?> packet, @Nullable PacketSendListener packetsendlistener) {
++
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PlayerAdvancements.java b/src/main/java/net/minecraft/server/PlayerAdvancements.java
+index f655e0ae4a287886d0291cd0089bad2000249d0f..70d5d48359ce9d8dad92e8f8fcac64a356fd2262 100644
+--- a/src/main/java/net/minecraft/server/PlayerAdvancements.java
++++ b/src/main/java/net/minecraft/server/PlayerAdvancements.java
+@@ -25,6 +25,9 @@ import java.util.Map.Entry;
+ import java.util.Set;
+ import java.util.function.BiConsumer;
+ import javax.annotation.Nullable;
++
++import com.ngxdev.SilverConfig;
++import com.ngxdev.fake.FakeEntityPlayer;
+ import net.minecraft.FileUtil;
+ import net.minecraft.Util;
+ import net.minecraft.advancements.Advancement;
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
+index ecb09c74153349e78bb81d1188c282e4be4000bf..cda5ef5398efbbaad3c28f043a1394898889c746 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
+@@ -333,6 +333,8 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+                 default:
+                     throw new IllegalStateException("Missing case for enum " + trackingRangeType);
+             }
++
++
+             configuredSpigotValue = convertSpigotRangeToVanilla(configuredSpigotValue);
+ 
+             int trackRange = (configuredSpigotValue >>> 4) + ((configuredSpigotValue & 15) != 0 ? 1 : 0);
+diff --git a/src/main/java/net/minecraft/server/level/ServerPlayer.java b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+index be05a52be037042c6158100e2ce880b8ed415d53..e87d0a3571563480f5e1fc011b68b1a217f2e12b 100644
+--- a/src/main/java/net/minecraft/server/level/ServerPlayer.java
++++ b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.server.level;
+ 
++import com.google.common.collect.Sets;
+ import com.google.common.net.InetAddresses;
+ import com.mojang.authlib.GameProfile;
+ import com.mojang.datafixers.util.Either;
+@@ -8,7 +9,9 @@ import com.mojang.serialization.DataResult;
+ import com.mojang.serialization.Dynamic;
+ import java.net.InetSocketAddress;
+ import java.net.SocketAddress;
++import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.Collections;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Objects;
+@@ -95,7 +98,6 @@ import net.minecraft.util.Mth;
+ import net.minecraft.util.RandomSource;
+ import net.minecraft.util.Unit;
+ import net.minecraft.world.damagesource.DamageSource;
+-import net.minecraft.world.damagesource.DamageSources;
+ import net.minecraft.world.effect.MobEffectInstance;
+ import net.minecraft.world.effect.MobEffects;
+ import net.minecraft.world.entity.Entity;
+@@ -189,6 +191,13 @@ import org.bukkit.inventory.MainHand;
+ // CraftBukkit end
+ 
+ public class ServerPlayer extends Player {
++    // Silver
++    public final List<Runnable> asyncTasks = Collections.synchronizedList(new ArrayList<>(20));
++
++    public final void execute(Runnable task) {
++        this.asyncTasks.add(task);
++    }
++    // Silver end
+ 
+     private static final Logger LOGGER = LogUtils.getLogger();
+     public long lastSave = MinecraftServer.currentTick; // Paper
+@@ -731,7 +740,8 @@ public class ServerPlayer extends Player {
+ 
+         // Paper start - Configurable container update tick rate
+         if (--containerUpdateDelay <= 0) {
+-            this.containerMenu.broadcastChanges();
++            // Silver - parallelize container synchronization
++            execute(() -> this.containerMenu.broadcastChanges());
+             containerUpdateDelay = this.level().paperConfig().tickRates.containerUpdate;
+         }
+         // Paper end
+diff --git a/src/main/java/net/minecraft/server/network/PlayerChunkSender.java b/src/main/java/net/minecraft/server/network/PlayerChunkSender.java
+index cfeb85b89a7f3dbc856fe7ebdf0bd6a9f3761f1c..36ab8e3121abd09c17546359d43ca6540660e12d 100644
+--- a/src/main/java/net/minecraft/server/network/PlayerChunkSender.java
++++ b/src/main/java/net/minecraft/server/network/PlayerChunkSender.java
+@@ -95,9 +95,10 @@ public class PlayerChunkSender {
+         handler.send(new ClientboundLevelChunkWithLightPacket(chunk, world.getLightEngine(), (BitSet)null, (BitSet)null, shouldModify));
+         // Paper end - Anti-Xray
+         // Paper start - PlayerChunkLoadEvent
+-        if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {
+-            new io.papermc.paper.event.packet.PlayerChunkLoadEvent(new org.bukkit.craftbukkit.CraftChunk(chunk), handler.getPlayer().getBukkitEntity()).callEvent();
+-        }
++        // Silver - unsupported.
++        //if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {
++        //    new io.papermc.paper.event.packet.PlayerChunkLoadEvent(new org.bukkit.craftbukkit.CraftChunk(chunk), handler.getPlayer().getBukkitEntity()).callEvent();
++        //}
+         // Paper end - PlayerChunkLoadEvent
+         ChunkPos chunkPos = chunk.getPos();
+         DebugPackets.sendPoiPacketsForChunk(world, chunkPos);
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index b82f968a9e02c75c99c524a6f51a953dd9c88486..93f61981a17103eec8ecd59a8238ad4f9bfd1d72 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -7,6 +7,7 @@ import com.google.common.collect.Lists;
+ import com.google.common.collect.Sets;
+ import com.google.common.collect.UnmodifiableIterator;
+ import com.mojang.logging.LogUtils;
++import com.ngxdev.SilverConfig;
+ import it.unimi.dsi.fastutil.objects.Object2DoubleArrayMap;
+ import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
+ import java.util.Arrays;
+@@ -129,7 +130,6 @@ import org.joml.Vector3f;
+ import org.slf4j.Logger;
+ import org.bukkit.Bukkit;
+ import org.bukkit.Location;
+-import org.bukkit.Server;
+ import org.bukkit.block.BlockFace;
+ import org.bukkit.command.CommandSender;
+ import org.bukkit.craftbukkit.event.CraftPortalEvent;
+@@ -422,6 +422,7 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, S
+     private UUID originWorld;
+     public boolean freezeLocked = false; // Paper - Freeze Tick Lock API
+     public boolean fixedPose = false; // Paper
++    public int trackingRange; // GenPaper
+ 
+     public void setOrigin(@javax.annotation.Nonnull Location location) {
+         this.origin = location.toVector();
+diff --git a/src/main/java/net/minecraft/world/entity/monster/EnderMan.java b/src/main/java/net/minecraft/world/entity/monster/EnderMan.java
+index bd5996eef2d946e9d7765b6b315bc5951158810e..7b0fee9d363115ef4ae9f7bb3485ecfacc5251a8 100644
+--- a/src/main/java/net/minecraft/world/entity/monster/EnderMan.java
++++ b/src/main/java/net/minecraft/world/entity/monster/EnderMan.java
+@@ -413,7 +413,7 @@ public class EnderMan extends Monster implements NeutralMob {
+             boolean flag = source.getDirectEntity() instanceof ThrownPotion;
+             boolean flag1;
+ 
+-            if (!source.is(DamageTypeTags.IS_PROJECTILE) && !flag) {
++            if ((!source.is(DamageTypeTags.IS_PROJECTILE) && !flag) || level().getWorld().getName().contains("endships")) {
+                 flag1 = super.hurt(source, amount);
+                 if (!this.level().isClientSide() && !(source.getEntity() instanceof LivingEntity) && this.random.nextInt(10) != 0) {
+                     this.teleport();
+diff --git a/src/main/java/net/minecraft/world/entity/monster/Guardian.java b/src/main/java/net/minecraft/world/entity/monster/Guardian.java
+index fd41ef66e2e12ec3a888bb376ef4363343914fcd..6361830c254f1db960055108437d73d4bde2b2ce 100644
+--- a/src/main/java/net/minecraft/world/entity/monster/Guardian.java
++++ b/src/main/java/net/minecraft/world/entity/monster/Guardian.java
+@@ -200,7 +200,7 @@ public class Guardian extends Monster {
+ 
+     @Override
+     public void aiStep() {
+-        if (this.isAlive()) {
++        if (this.isAlive() && this.aware) {
+             if (this.level().isClientSide) {
+                 this.clientSideTailAnimationO = this.clientSideTailAnimation;
+                 Vec3 vec3d;
+diff --git a/src/main/java/net/minecraft/world/entity/monster/Vex.java b/src/main/java/net/minecraft/world/entity/monster/Vex.java
+index 30ea3f64234fd1fda8dada3c7fb12be0730322a8..bf75d59a807dcd63869546fe809dde7be19f80fb 100644
+--- a/src/main/java/net/minecraft/world/entity/monster/Vex.java
++++ b/src/main/java/net/minecraft/world/entity/monster/Vex.java
+@@ -81,10 +81,15 @@ public class Vex extends Monster implements TraceableEntity {
+ 
+     @Override
+     public void tick() {
+-        this.noPhysics = true;
+-        super.tick();
+-        this.noPhysics = false;
+-        this.setNoGravity(true);
++        if(this.level().spigotConfig.disableVexClipping) {
++            super.tick();
++        } else {
++            this.noPhysics = true;
++            super.tick();
++            this.noPhysics = false;
++            this.setNoGravity(true);
++        }
++
+         if (this.hasLimitedLife && --this.limitedLifeTicks <= 0) {
+             this.limitedLifeTicks = 20;
+             this.hurt(this.damageSources().starve(), 1.0F);
+diff --git a/src/main/java/net/minecraft/world/entity/monster/Witch.java b/src/main/java/net/minecraft/world/entity/monster/Witch.java
+index 580dff41d746d9591f718081d9dfe4ac77e7eeaa..46835b9a41d194ce40cc7e9c0d8ed0ec4836f904 100644
+--- a/src/main/java/net/minecraft/world/entity/monster/Witch.java
++++ b/src/main/java/net/minecraft/world/entity/monster/Witch.java
+@@ -52,8 +52,8 @@ public class Witch extends Raider implements RangedAttackMob {
+     private static final AttributeModifier SPEED_MODIFIER_DRINKING = new AttributeModifier(Witch.SPEED_MODIFIER_DRINKING_UUID, "Drinking speed penalty", -0.25D, AttributeModifier.Operation.ADDITION);
+     private static final EntityDataAccessor<Boolean> DATA_USING_ITEM = SynchedEntityData.defineId(Witch.class, EntityDataSerializers.BOOLEAN);
+     public int usingTime;
+-    private NearestHealableRaiderTargetGoal<Raider> healRaidersGoal;
+-    private NearestAttackableWitchTargetGoal<Player> attackPlayersGoal;
++    public NearestHealableRaiderTargetGoal<Raider> healRaidersGoal;
++    public NearestAttackableWitchTargetGoal<Player> attackPlayersGoal;
+ 
+     public Witch(EntityType<? extends Witch> type, Level world) {
+         super(type, world);
+diff --git a/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java b/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
+index a2093158e57d5f43c4afa66386481b82b3c4c3c4..32aa39fc206ce9b9b813259161ec89da8fb426a6 100644
+--- a/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -5,9 +5,12 @@ import java.util.Collections;
+ import java.util.Iterator;
+ import java.util.List;
+ import javax.annotation.Nullable;
++
++import com.ngxdev.SilverConfig;
+ import net.minecraft.advancements.CriteriaTriggers;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.particles.ParticleTypes;
++import net.minecraft.core.particles.SimpleParticleType;
+ import net.minecraft.nbt.CompoundTag;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.game.ClientGamePacketListener;
+@@ -83,6 +86,10 @@ public class FishingHook extends Projectile {
+     public boolean rainInfluenced = true;
+     public boolean skyInfluenced = true;
+     // CraftBukkit end
++    // Focal start
++    private static final SimpleParticleType LAVA_PARTICLE = ParticleTypes.DRIPPING_LAVA;
++    private boolean wasInLava = false;
++    // Focal end
+ 
+     private FishingHook(EntityType<? extends FishingHook> type, Level world, int luckOfTheSeaLevel, int lureLevel) {
+         super(type, world);
+@@ -564,7 +571,7 @@ public class FishingHook extends Projectile {
+             }
+             // CraftBukkit start
+             if (i == 0) {
+-                PlayerFishEvent playerFishEvent = new PlayerFishEvent((Player) entityhuman.getBukkitEntity(), null, (FishHook) this.getBukkitEntity(), org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(hand), PlayerFishEvent.State.REEL_IN); // Paper - add hand
++                PlayerFishEvent playerFishEvent = new PlayerFishEvent((Player) entityhuman.getBukkitEntity(), null, (FishHook) this.getBukkitEntity(), org.bukkit.craftbukkit.CraftEquipmentSlot.getHand(hand), PlayerFishEvent.State.REEL_IN, wasInLava); // Paper - add hand
+                 this.level().getCraftServer().getPluginManager().callEvent(playerFishEvent);
+                 if (playerFishEvent.isCancelled()) {
+                     return 0;
+diff --git a/src/main/java/net/minecraft/world/level/BaseSpawner.java b/src/main/java/net/minecraft/world/level/BaseSpawner.java
+index d88a23984dcea9c2119bdc245013af8b25448da3..eb34e8b11214dd0335d748d14c4c92dd081b6dd4 100644
+--- a/src/main/java/net/minecraft/world/level/BaseSpawner.java
++++ b/src/main/java/net/minecraft/world/level/BaseSpawner.java
+@@ -4,6 +4,8 @@ import com.mojang.logging.LogUtils;
+ import java.util.Optional;
+ import java.util.function.Function;
+ import javax.annotation.Nullable;
++
++import com.ngxdev.SilverConfig;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.particles.ParticleTypes;
+ import net.minecraft.core.registries.BuiltInRegistries;
+@@ -118,23 +120,24 @@ public abstract class BaseSpawner {
+                     if (world.noCollision(((EntityType) optional.get()).getAABB(d0, d1, d2))) {
+                         BlockPos blockposition1 = BlockPos.containing(d0, d1, d2);
+ 
+-                        if (mobspawnerdata.getCustomSpawnRules().isPresent()) {
+-                            if (!((EntityType) optional.get()).getCategory().isFriendly() && world.getDifficulty() == Difficulty.PEACEFUL) {
+-                                continue;
+-                            }
++                        if(!world.spigotConfig.disableSpawnerChecks) {
++                            if (mobspawnerdata.getCustomSpawnRules().isPresent()) {
++                                if (!((EntityType) optional.get()).getCategory().isFriendly() && world.getDifficulty() == Difficulty.PEACEFUL) {
++                                    continue;
++                                }
+ 
+-                            SpawnData.CustomSpawnRules mobspawnerdata_a = (SpawnData.CustomSpawnRules) mobspawnerdata.getCustomSpawnRules().get();
++                                SpawnData.CustomSpawnRules mobspawnerdata_a = (SpawnData.CustomSpawnRules) mobspawnerdata.getCustomSpawnRules().get();
+ 
+-                            if (!mobspawnerdata_a.blockLightLimit().isValueInRange(world.getBrightness(LightLayer.BLOCK, blockposition1)) || !mobspawnerdata_a.skyLightLimit().isValueInRange(world.getBrightness(LightLayer.SKY, blockposition1))) {
++                                if (!mobspawnerdata_a.blockLightLimit().isValueInRange(world.getBrightness(LightLayer.BLOCK, blockposition1)) || !mobspawnerdata_a.skyLightLimit().isValueInRange(world.getBrightness(LightLayer.SKY, blockposition1))) {
++                                    continue;
++                                }
++                            } else if (!SpawnPlacements.checkSpawnRules((EntityType) optional.get(), world, MobSpawnType.SPAWNER, blockposition1, world.getRandom())) {
+                                 continue;
+                             }
+-                        } else if (!SpawnPlacements.checkSpawnRules((EntityType) optional.get(), world, MobSpawnType.SPAWNER, blockposition1, world.getRandom())) {
+-                            continue;
+                         }
+                         // Paper start
+                         EntityType<?> entityType = optional.get();
+                         String key = EntityType.getKey(entityType).getPath();
+-
+                         org.bukkit.entity.EntityType type = org.bukkit.entity.EntityType.fromName(key);
+                         if (type != null) {
+                             com.destroystokyo.paper.event.entity.PreSpawnerSpawnEvent event;
+@@ -175,7 +178,7 @@ public abstract class BaseSpawner {
+                         if (entity instanceof Mob) {
+                             Mob entityinsentient = (Mob) entity;
+ 
+-                            if (mobspawnerdata.getCustomSpawnRules().isEmpty() && !entityinsentient.checkSpawnRules(world, MobSpawnType.SPAWNER) || !entityinsentient.checkSpawnObstruction(world)) {
++                            if ((!entity.level().spigotConfig.disableSpawnerChecks && mobspawnerdata.getCustomSpawnRules().isEmpty() && !entityinsentient.checkSpawnRules(world, MobSpawnType.SPAWNER)) || !entityinsentient.checkSpawnObstruction(world)) {
+                                 continue;
+                             }
+ 
+diff --git a/src/main/java/net/minecraft/world/level/block/BushBlock.java b/src/main/java/net/minecraft/world/level/block/BushBlock.java
+index bed3d9c781c7d3ca260027b4737970889a54689c..fbb17923db8aa44500178259251062556726562f 100644
+--- a/src/main/java/net/minecraft/world/level/block/BushBlock.java
++++ b/src/main/java/net/minecraft/world/level/block/BushBlock.java
+@@ -3,6 +3,7 @@ package net.minecraft.world.level.block;
+ import com.mojang.serialization.MapCodec;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Direction;
++import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.tags.BlockTags;
+ import net.minecraft.world.level.BlockGetter;
+ import net.minecraft.world.level.LevelAccessor;
+@@ -27,7 +28,7 @@ public abstract class BushBlock extends Block {
+     @Override
+     public BlockState updateShape(BlockState state, Direction direction, BlockState neighborState, LevelAccessor world, BlockPos pos, BlockPos neighborPos) {
+         // CraftBukkit start
+-        if (!state.canSurvive(world, pos)) {
++        if (!state.canSurvive(world, pos) && !(world instanceof ServerLevel && ((ServerLevel) world).spigotConfig.ignoreCropLight)) {
+             if (!(world instanceof net.minecraft.server.level.ServerLevel && ((net.minecraft.server.level.ServerLevel) world).hasPhysicsEvent) || !org.bukkit.craftbukkit.event.CraftEventFactory.callBlockPhysicsEvent(world, pos).isCancelled()) { // Paper
+                 return Blocks.AIR.defaultBlockState();
+             }
+diff --git a/src/main/java/net/minecraft/world/level/block/CactusBlock.java b/src/main/java/net/minecraft/world/level/block/CactusBlock.java
+index a9629a102c4fa4e5720e63fcf4590e9231426c62..e8ebfaa42f8cf0c718821fefba7f531ae3ec31d8 100644
+--- a/src/main/java/net/minecraft/world/level/block/CactusBlock.java
++++ b/src/main/java/net/minecraft/world/level/block/CactusBlock.java
+@@ -119,13 +119,13 @@ public class CactusBlock extends Block {
+         return false;
+     }
+ 
+-    @Override
++   /* @Override
+     public void entityInside(BlockState state, Level world, BlockPos pos, Entity entity) {
+         if (!new io.papermc.paper.event.entity.EntityInsideBlockEvent(entity.getBukkitEntity(), org.bukkit.craftbukkit.block.CraftBlock.at(world, pos)).callEvent()) { return; } // Paper
+         CraftEventFactory.blockDamage = world.getWorld().getBlockAt(pos.getX(), pos.getY(), pos.getZ()); // CraftBukkit
+         entity.hurt(world.damageSources().cactus(), 1.0F);
+         CraftEventFactory.blockDamage = null; // CraftBukkit
+-    }
++    }*/
+ 
+     @Override
+     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+diff --git a/src/main/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java b/src/main/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java
+index daae7fd6e0148cfba8e359d990748a0c83a3376e..665d621b19abc469376a24d3820a08fc2a610919 100644
+--- a/src/main/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java
++++ b/src/main/java/net/minecraft/world/level/block/ChangeOverTimeBlock.java
+@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.util.RandomSource;
+ import net.minecraft.world.level.block.state.BlockState;
++import org.bukkit.Material;
+ 
+ public interface ChangeOverTimeBlock<T extends Enum<T>> {
+ 
+@@ -16,6 +17,9 @@ public interface ChangeOverTimeBlock<T extends Enum<T>> {
+     float getChanceModifier();
+ 
+     default void changeOverTime(BlockState state, ServerLevel world, BlockPos pos, RandomSource random) {
++        if(state.getBukkitMaterial() == Material.COPPER_BLOCK) {
++            return;
++        }
+         float f = 0.05688889F;
+ 
+         if (random.nextFloat() < 0.05688889F) {
+diff --git a/src/main/java/net/minecraft/world/level/block/FarmBlock.java b/src/main/java/net/minecraft/world/level/block/FarmBlock.java
+index 59bbdead2ebd8965d222540c7243dde051bbcc4b..aaf3ea07f7e37488271a6a497e4bc92187b3cd84 100644
+--- a/src/main/java/net/minecraft/world/level/block/FarmBlock.java
++++ b/src/main/java/net/minecraft/world/level/block/FarmBlock.java
+@@ -152,7 +152,8 @@ public class FarmBlock extends Block {
+ 
+     private static boolean isNearWater(LevelReader world, BlockPos pos) {
+         // Paper start - remove abstract block iteration
+-        int xOff = pos.getX();
++        return true;
++        /*int xOff = pos.getX();
+         int yOff = pos.getY();
+         int zOff = pos.getZ();
+ 
+@@ -171,7 +172,7 @@ public class FarmBlock extends Block {
+             }
+         }
+ 
+-        return false;
++        return false;*/
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/minecraft/world/level/block/entity/BeaconBlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+index f13943db6f2fb923c52dcf9e8bf7000041d0a362..22663c1dc663cb1f5a22a387b6db1df18346090f 100644
+--- a/src/main/java/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
++++ b/src/main/java/net/minecraft/world/level/block/entity/BeaconBlockEntity.java
+@@ -8,6 +8,8 @@ import java.util.List;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import javax.annotation.Nullable;
++
++import com.ngxdev.SilverConfig;
+ import net.minecraft.advancements.CriteriaTriggers;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.registries.BuiltInRegistries;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+index fa170cc1ce7011d201295b89718292d696c7fc24..be2ec2a3176ee75cdc2cde7648a63297849ac314 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -5,12 +5,16 @@ import com.destroystokyo.paper.exception.ServerInternalException;
+ import com.google.common.collect.Maps;
+ import com.google.common.collect.UnmodifiableIterator;
+ import com.mojang.logging.LogUtils;
++import io.papermc.paper.world.ChunkEntitySlices;
+ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+ import it.unimi.dsi.fastutil.shorts.ShortListIterator;
++
++import java.util.EnumSet;
+ import java.util.Iterator;
+ import java.util.Map;
+ import java.util.Map.Entry;
++import java.util.Set;
+ import java.util.function.Consumer;
+ import java.util.function.Supplier;
+ import javax.annotation.Nullable;
+@@ -51,8 +55,17 @@ import net.minecraft.world.level.material.Fluids;
+ import net.minecraft.world.ticks.LevelChunkTicks;
+ import net.minecraft.world.ticks.TickContainerAccess;
+ import org.slf4j.Logger;
++import org.bukkit.Chunk;
++import org.jetbrains.annotations.NotNull;
+ 
+ public class LevelChunk extends ChunkAccess {
++    public int lastWorkTick;
++    public int entityCount;
++    public float closestPlayer = 0;
++    private final Set<Chunk.Attribute> attributes = EnumSet.noneOf(Chunk.Attribute.class); // Focal
++
++    @Nullable
++    public ChunkEntitySlices entitySlices;
+ 
+     static final Logger LOGGER = LogUtils.getLogger();
+     private static final TickingBlockEntity NULL_TICKER = new TickingBlockEntity() {
+@@ -914,6 +927,28 @@ public class LevelChunk extends ChunkAccess {
+ 
+     }
+ 
++    // Focal start
++    @Override
++    public void addAttribute(@NotNull Chunk.Attribute attribute) {
++        attributes.add(attribute);
++    }
++
++    @Override
++    public void removeAttribute(@NotNull Chunk.Attribute attribute) {
++        attributes.remove(attribute);
++    }
++
++    @Override
++    public @NotNull Set<Chunk.Attribute> getAttributes() {
++        return attributes;
++    }
++
++    @Override
++    public boolean hasAttribute(@NotNull Chunk.Attribute attribute) {
++        return attributes.contains(attribute);
++    }
++    // Focal end
++
+     public void setLoaded(boolean loadedToWorld) {
+         this.loaded = loadedToWorld;
+     }
+diff --git a/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java b/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java
+index 7aa585875dad5296526bb5d67fc5ea0f8875e452..c39f0e7207dc32578c3f0fd999734cf9c7bbe1c3 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java
++++ b/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java
+@@ -2,10 +2,8 @@ package net.minecraft.world.level.chunk;
+ 
+ import com.google.common.collect.Lists;
+ import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
+-import java.util.Collections;
+-import java.util.EnumSet;
+-import java.util.List;
+-import java.util.Map;
++
++import java.util.*;
+ import javax.annotation.Nullable;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Holder;
+@@ -46,6 +44,7 @@ public class ProtoChunk extends ChunkAccess {
+     private BelowZeroRetrogen belowZeroRetrogen;
+     private final ProtoChunkTicks<Block> blockTicks;
+     private final ProtoChunkTicks<Fluid> fluidTicks;
++    private final Set<Chunk.Attribute> attributes = EnumSet.noneOf(Chunk.Attribute.class); // Focal
+ 
+     public ProtoChunk(ChunkPos pos, UpgradeData upgradeData, LevelHeightAccessor world, Registry<Biome> biomeRegistry, @Nullable BlendingData blendingData) {
+         this(pos, upgradeData, (LevelChunkSection[])null, new ProtoChunkTicks<>(), new ProtoChunkTicks<>(), world, biomeRegistry, blendingData);
+@@ -329,4 +328,26 @@ public class ProtoChunk extends ChunkAccess {
+     public LevelHeightAccessor getHeightAccessorForGeneration() {
+         return (LevelHeightAccessor)(this.isUpgrading() ? BelowZeroRetrogen.UPGRADE_HEIGHT_ACCESSOR : this);
+     }
++
++    // Focal start
++    @Override
++    public void addAttribute(@NotNull Chunk.Attribute attribute) {
++        attributes.add(attribute);
++    }
++
++    @Override
++    public void removeAttribute(@NotNull Chunk.Attribute attribute) {
++        attributes.remove(attribute);
++    }
++
++    @Override
++    public @NotNull Set<Chunk.Attribute> getAttributes() {
++        return attributes;
++    }
++
++    @Override
++    public boolean hasAttribute(@NotNull Chunk.Attribute attribute) {
++        return attributes.contains(attribute);
++    }
++    // Focal end
+ }
+diff --git a/src/main/java/net/minecraft/world/level/levelgen/feature/EndPodiumFeature.java b/src/main/java/net/minecraft/world/level/levelgen/feature/EndPodiumFeature.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..5b4a61cdbe16cff43c68b5eb718c5943d3c282f0
+--- /dev/null
++++ b/src/main/java/net/minecraft/world/level/levelgen/feature/EndPodiumFeature.java
+@@ -0,0 +1,65 @@
++package net.minecraft.world.level.levelgen.feature;
++
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.world.level.WorldGenLevel;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.block.WallTorchBlock;
++import net.minecraft.world.level.levelgen.feature.configurations.NoneFeatureConfiguration;
++
++public class EndPodiumFeature extends Feature<NoneFeatureConfiguration> {
++    public static final int PODIUM_RADIUS = 4;
++    public static final int PODIUM_PILLAR_HEIGHT = 4;
++    public static final int RIM_RADIUS = 1;
++    public static final float CORNER_ROUNDING = 0.5F;
++    public static BlockPos END_PODIUM_LOCATION = BlockPos.ZERO;
++    private final boolean active;
++
++    public static BlockPos getLocation(BlockPos pos) {
++        return END_PODIUM_LOCATION.offset(pos);
++    }
++
++    public EndPodiumFeature(boolean open) {
++        super(NoneFeatureConfiguration.CODEC);
++        this.active = open;
++    }
++
++    @Override
++    public boolean place(FeaturePlaceContext<NoneFeatureConfiguration> context) {
++        BlockPos blockPos = context.origin();
++        WorldGenLevel worldGenLevel = context.level();
++
++        for(BlockPos blockPos2 : BlockPos.betweenClosed(new BlockPos(blockPos.getX() - 4, blockPos.getY() - 1, blockPos.getZ() - 4), new BlockPos(blockPos.getX() + 4, blockPos.getY() + 32, blockPos.getZ() + 4))) {
++            boolean bl = blockPos2.closerThan(blockPos, 2.5D);
++            if (bl || blockPos2.closerThan(blockPos, 3.5D)) {
++                if (blockPos2.getY() < blockPos.getY()) {
++                    if (bl) {
++                        this.setBlock(worldGenLevel, blockPos2, Blocks.BEDROCK.defaultBlockState());
++                    } else if (blockPos2.getY() < blockPos.getY()) {
++                        this.setBlock(worldGenLevel, blockPos2, Blocks.END_STONE.defaultBlockState());
++                    }
++                } else if (blockPos2.getY() > blockPos.getY()) {
++                    this.setBlock(worldGenLevel, blockPos2, Blocks.AIR.defaultBlockState());
++                } else if (!bl) {
++                    this.setBlock(worldGenLevel, blockPos2, Blocks.BEDROCK.defaultBlockState());
++                } else if (this.active) {
++                    this.setBlock(worldGenLevel, new BlockPos(blockPos2), Blocks.END_PORTAL.defaultBlockState());
++                } else {
++                    this.setBlock(worldGenLevel, new BlockPos(blockPos2), Blocks.AIR.defaultBlockState());
++                }
++            }
++        }
++
++        for(int i = 0; i < 4; ++i) {
++            this.setBlock(worldGenLevel, blockPos.above(i), Blocks.BEDROCK.defaultBlockState());
++        }
++
++        BlockPos blockPos3 = blockPos.above(2);
++
++        for(Direction direction : Direction.Plane.HORIZONTAL) {
++            this.setBlock(worldGenLevel, blockPos3.relative(direction), Blocks.WALL_TORCH.defaultBlockState().setValue(WallTorchBlock.FACING, direction));
++        }
++
++        return true;
++    }
++}
+diff --git a/src/main/java/net/minecraft/world/level/storage/PlayerDataStorage.java b/src/main/java/net/minecraft/world/level/storage/PlayerDataStorage.java
+index b3a90d6ef0e17c236e0b3c46e2d0012671afdaa7..a54f3e7110a7b6cd59e99af796b1568b2c3f3eb5 100644
+--- a/src/main/java/net/minecraft/world/level/storage/PlayerDataStorage.java
++++ b/src/main/java/net/minecraft/world/level/storage/PlayerDataStorage.java
+@@ -6,19 +6,18 @@ import java.io.File;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import javax.annotation.Nullable;
++
++import com.ngxdev.SilverConfig;
+ import net.minecraft.Util;
+ import net.minecraft.nbt.CompoundTag;
+ import net.minecraft.nbt.NbtAccounter;
+ import net.minecraft.nbt.NbtIo;
+ import net.minecraft.nbt.NbtUtils;
+ import net.minecraft.server.level.ServerPlayer;
+-import net.minecraft.util.datafix.DataFixTypes;
+ import net.minecraft.world.entity.player.Player;
+ import org.slf4j.Logger;
+ 
+ // CraftBukkit start
+-import java.io.FileInputStream;
+-import java.io.InputStream;
+ import org.bukkit.craftbukkit.entity.CraftPlayer;
+ // CraftBukkit end
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftChunk.java b/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
+index b6716f2b0037d12fb9956d7d1d0fab9b86cf4433..4d74aa1b519acfa89e106f91dc921f29cc60a012 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
+@@ -3,9 +3,8 @@ package org.bukkit.craftbukkit;
+ import com.google.common.base.Preconditions;
+ import com.google.common.base.Predicates;
+ import com.mojang.serialization.Codec;
+-import java.util.Arrays;
+-import java.util.Collection;
+-import java.util.Objects;
++
++import java.util.*;
+ import java.util.concurrent.locks.LockSupport;
+ import java.util.function.BooleanSupplier;
+ import java.util.function.Predicate;
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+index 1c3e1153d08b59d29b3613fc3b50a4780aa7a3ac..0d76f2938b4ad7251cc21c7e98e4b174dd1c0044 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+@@ -1165,6 +1165,18 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
+         return set;
+     }
+ 
++    // GenPaper start
++    @Override
++    public int getTrackingRange() {
++        return getHandle().trackingRange;
++    }
++
++    @Override
++    public void setTrackingRange(int trackingRange) {
++        getHandle().trackingRange = trackingRange;
++    }
++    // GenPaper end
++
+     @Override
+     public boolean spawnAt(Location location, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason reason) {
+         Preconditions.checkNotNull(location, "location cannot be null");
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/Versioning.java b/src/main/java/org/bukkit/craftbukkit/util/Versioning.java
+index 97bace6bf9281769b1884e981eb776be157e4c2b..34861a136a8f57fe61f93bcb28f1c09eb96ab7b8 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/Versioning.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/Versioning.java
+@@ -9,7 +9,7 @@ import org.bukkit.Bukkit;
+ 
+ public final class Versioning {
+     public static String getBukkitVersion() {
+-        String result = "Unknown-Version";
++        String result = "1.20.4-R0.1-SNAPSHOT";
+ 
+         InputStream stream = Bukkit.class.getClassLoader().getResourceAsStream("META-INF/maven/com.floki.api/floki-api/pom.properties"); // Floki
+         Properties properties = new Properties();
+diff --git a/src/main/java/org/spigotmc/ActivationRange.java b/src/main/java/org/spigotmc/ActivationRange.java
+index 2d31752478636bd21bbff5b430e5acb76b5d91c2..3bf23a9c75740f3365e8ca472e2aff273e42cd8e 100644
+--- a/src/main/java/org/spigotmc/ActivationRange.java
++++ b/src/main/java/org/spigotmc/ActivationRange.java
+@@ -1,5 +1,6 @@
+ package org.spigotmc;
+ 
++import com.ngxdev.SilverConfig;
+ import net.minecraft.core.BlockPos;
+ import net.minecraft.server.MinecraftServer;
+ import net.minecraft.server.level.ServerChunkCache;
+@@ -384,7 +385,7 @@ public class ActivationRange
+         }
+         // Paper start - special case always immunities
+         // immunize brand new entities, dead entities, and portal scenarios
+-        if (entity.defaultActivationState || entity.tickCount < 20*10 || !entity.isAlive() || entity.isInsidePortal || entity.portalCooldown > 0) {
++        if (entity.defaultActivationState || entity.level().spigotConfig.keepMobsActive || entity.tickCount < 20*10 || !entity.isAlive() || entity.isInsidePortal || entity.portalCooldown > 0) {
+             return true;
+         }
+         // immunize leashed entities
+diff --git a/src/main/java/org/spigotmc/SpigotWorldConfig.java b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+index 1cf6d4f854d89c515e48e1fb365eb95ff9340765..1ffb9b0c979bf031567c401405c6708096547e50 100644
+--- a/src/main/java/org/spigotmc/SpigotWorldConfig.java
++++ b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+@@ -321,6 +321,34 @@ public class SpigotWorldConfig
+         this.log( "Zombie Aggressive Towards Villager: " + this.zombieAggressiveTowardsVillager );
+     }
+ 
++    public boolean disableSpawnerChecks;
++    private void disableSpawnerChecks()
++    {
++        this.disableSpawnerChecks = this.getBoolean("disable-spawner-checks", false );
++        this.log( "Disable Spawner Checks: " + this.disableSpawnerChecks );
++    }
++
++    public boolean ignoreCropLight;
++    private void ignoreCropLight()
++    {
++        this.ignoreCropLight = this.getBoolean("ignore-crop-light", false );
++        this.log( "Ignore Crop Light: " + this.ignoreCropLight );
++    }
++
++    public boolean keepMobsActive;
++    private void keepMobsActive()
++    {
++        this.keepMobsActive = this.getBoolean("keep-mobs-active", false );
++        this.log( "Keep Mobs Active: " + this.keepMobsActive );
++    }
++
++    public boolean disableVexClipping;
++    private void disableVexClipping()
++    {
++        this.disableVexClipping = this.getBoolean("disable-vex-clipping", true );
++        this.log( "Disable Vex Clipping: " + this.disableVexClipping );
++    }
++
+     public boolean nerfSpawnerMobs;
+     private void nerfSpawnerMobs()
+     {

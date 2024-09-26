@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: qIooIp <dino.kanizaj@gmail.com>
+Date: Thu, 26 Sep 2024 09:31:03 +0200
+Subject: [PATCH] (FlokiPaper) the birth of floki paper
+
+
+diff --git a/src/main/java/org/bukkit/Chunk.java b/src/main/java/org/bukkit/Chunk.java
+index d547ae2b20c58bc703de4532b3b591dd34ddb1c6..d4d9f35cc18bc7565f23a9ea0183cf7d76206f44 100644
+--- a/src/main/java/org/bukkit/Chunk.java
++++ b/src/main/java/org/bukkit/Chunk.java
+@@ -1,6 +1,8 @@
+ package org.bukkit;
+ 
+ import java.util.Collection;
++import java.util.Set;
++
+ import org.bukkit.block.Biome;
+ import org.bukkit.block.Block;
+ import org.bukkit.block.BlockState;
+@@ -11,6 +13,7 @@ import org.bukkit.generator.structure.Structure;
+ import org.bukkit.persistence.PersistentDataHolder;
+ import org.bukkit.plugin.Plugin;
+ import org.jetbrains.annotations.NotNull;
++import org.jetbrains.annotations.Unmodifiable;
+ 
+ /**
+  * Represents a chunk of blocks.
+@@ -351,6 +354,22 @@ public interface Chunk extends PersistentDataHolder {
+     @NotNull
+     Collection<GeneratedStructure> getStructures(@NotNull Structure structure);
+ 
++    // Focal start - chunk attributes
++
++    void addAttributes(Attribute @NotNull... attributes);
++
++    void removeAttributes(Attribute @NotNull... attributes);
++
++    @NotNull @Unmodifiable
++    Set<Attribute> getAttributes();
++
++    boolean hasAttribute(@NotNull Attribute attribute);
++
++    enum Attribute {
++        WATERLESS_SUGARCANE,
++        LIGHTLESS_CROPS
++    }
++
+     /**
+      * An enum to specify the load level of a chunk.
+      */
+diff --git a/src/main/java/org/bukkit/entity/Entity.java b/src/main/java/org/bukkit/entity/Entity.java
+index d9929d9311e4b2b0ae13a8f6f13563257263f298..3043cfacfa8028c6d757b3d37bf62a772e840030 100644
+--- a/src/main/java/org/bukkit/entity/Entity.java
++++ b/src/main/java/org/bukkit/entity/Entity.java
+@@ -989,6 +989,10 @@ public interface Entity extends Metadatable, CommandSender, Nameable, Persistent
+     @Deprecated
+     @NotNull Set<Player> getTrackedPlayers();
+ 
++    int getTrackingRange();
++
++    void setTrackingRange(int trackingRange);
++
+     /**
+      * Spawns the entity in the world at the given {@link Location} with the default spawn reason.
+      * <p>
+diff --git a/src/main/java/org/bukkit/event/player/PlayerFishEvent.java b/src/main/java/org/bukkit/event/player/PlayerFishEvent.java
+index bfc48d4a8972579aac2745ad5bbad8c0efa82376..7eacf822e1dfd0386e0e0abcda23489943b55cf5 100644
+--- a/src/main/java/org/bukkit/event/player/PlayerFishEvent.java
++++ b/src/main/java/org/bukkit/event/player/PlayerFishEvent.java
+@@ -20,6 +20,7 @@ public class PlayerFishEvent extends PlayerEvent implements Cancellable {
+     private final State state;
+     private final FishHook hookEntity;
+     private final EquipmentSlot hand;
++    private final boolean isLava; // Focal
+ 
+     public PlayerFishEvent(@NotNull final Player player, @Nullable final Entity entity, @NotNull final FishHook hookEntity, @Nullable EquipmentSlot hand, @NotNull final State state, boolean isLava) {
+         super(player);
+@@ -27,6 +28,7 @@ public class PlayerFishEvent extends PlayerEvent implements Cancellable {
+         this.hookEntity = hookEntity;
+         this.hand = hand;
+         this.state = state;
++        this.isLava = isLava;
+     }
+ 
+     public PlayerFishEvent(@NotNull final Player player, @Nullable final Entity entity, @NotNull final FishHook hookEntity, @NotNull final State state, boolean isLava) { // Focal
+@@ -34,7 +36,7 @@ public class PlayerFishEvent extends PlayerEvent implements Cancellable {
+     }
+ 
+     public PlayerFishEvent(@NotNull final Player player, @Nullable final Entity entity, @NotNull final FishHook hookEntity, @NotNull final State state) {
+-        this(player, entity, hookEntity, null, state);
++        this(player, entity, hookEntity, null, state, false);
+     }
+ 
+     /**
+@@ -119,6 +121,12 @@ public class PlayerFishEvent extends PlayerEvent implements Cancellable {
+         return state;
+     }
+ 
++    // Focal start
++    public boolean isLava() {
++        return isLava;
++    }
++    // Focal end
++
+     @NotNull
+     @Override
+     public HandlerList getHandlers() {

@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: qIooIp <dino.kanizaj@gmail.com>
+Date: Fri, 27 Sep 2024 14:52:34 +0200
+Subject: [PATCH] Fishing hook fixes
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java b/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
+index 9c6445bf9908f997df794a9d990438f563d50736..18a6efe423b395c1a33b2511a013cab11d4cf2ff 100644
+--- a/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
++++ b/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
+@@ -337,7 +337,7 @@ public class FishingHook extends Projectile {
+                 this.timeUntilHooked = 0;
+                 this.getEntityData().set(FishingHook.DATA_BITING, false);
+                 // CraftBukkit start
+-                PlayerFishEvent playerFishEvent = new PlayerFishEvent((Player) this.getPlayerOwner().getBukkitEntity(), null, (FishHook) this.getBukkitEntity(), PlayerFishEvent.State.FAILED_ATTEMPT);
++                PlayerFishEvent playerFishEvent = new PlayerFishEvent((Player) this.getPlayerOwner().getBukkitEntity(), null, (FishHook) this.getBukkitEntity(), PlayerFishEvent.State.FAILED_ATTEMPT, wasInLava);
+                 this.level().getCraftServer().getPluginManager().callEvent(playerFishEvent);
+                 // CraftBukkit end
+             }
+@@ -378,7 +378,7 @@ public class FishingHook extends Projectile {
+                     // Focal end
+                 } else {
+                     // CraftBukkit start
+-                    PlayerFishEvent playerFishEvent = new PlayerFishEvent((Player) this.getPlayerOwner().getBukkitEntity(), null, (FishHook) this.getBukkitEntity(), PlayerFishEvent.State.BITE);
++                    PlayerFishEvent playerFishEvent = new PlayerFishEvent((Player) this.getPlayerOwner().getBukkitEntity(), null, (FishHook) this.getBukkitEntity(), PlayerFishEvent.State.BITE, wasInLava);
+                     this.level().getCraftServer().getPluginManager().callEvent(playerFishEvent);
+                     if (playerFishEvent.isCancelled()) {
+                         return;

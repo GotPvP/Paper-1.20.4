@@ -1,0 +1,204 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: qIooIp <dino.kanizaj@gmail.com>
+Date: Fri, 4 Oct 2024 22:32:36 +0200
+Subject: [PATCH] Change potato and carrots loot table
+
+
+diff --git a/src/main/java/net/minecraft/data/loot/packs/VanillaBlockLoot.java b/src/main/java/net/minecraft/data/loot/packs/VanillaBlockLoot.java
+index 7e57439cc576bd3b23a50fe881208fa6db1d37ad..31cf4354a48546b0ca0fc867b084bb24c7f9a317 100644
+--- a/src/main/java/net/minecraft/data/loot/packs/VanillaBlockLoot.java
++++ b/src/main/java/net/minecraft/data/loot/packs/VanillaBlockLoot.java
+@@ -1262,7 +1262,6 @@ public class VanillaBlockLoot extends BlockLootSubProvider {
+         this.add(Blocks.BEETROOTS, this.createCropDrops(Blocks.BEETROOTS, Items.BEETROOT, Items.BEETROOT_SEEDS, builder));
+         LootItemCondition.Builder builder2 = LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.WHEAT).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(CropBlock.AGE, 7));
+         this.add(Blocks.WHEAT, this.createCropDrops(Blocks.WHEAT, Items.WHEAT, Items.WHEAT_SEEDS, builder2));
+-        LootItemCondition.Builder builder3 = LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.CARROTS).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(CarrotBlock.AGE, 7));
+         LootItemCondition.Builder builder4 = LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.MANGROVE_PROPAGULE).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(MangrovePropaguleBlock.AGE, 4));
+         this.add(Blocks.MANGROVE_PROPAGULE, this.applyExplosionDecay(Blocks.MANGROVE_PROPAGULE, LootTable.lootTable().withPool(LootPool.lootPool().when(builder4).add(LootItem.lootTableItem(Items.MANGROVE_PROPAGULE)))));
+         this.add(Blocks.TORCHFLOWER_CROP, this.applyExplosionDecay(Blocks.TORCHFLOWER_CROP, LootTable.lootTable().withPool(LootPool.lootPool().add(LootItem.lootTableItem(Items.TORCHFLOWER_SEEDS)))));
+@@ -1272,9 +1271,18 @@ public class VanillaBlockLoot extends BlockLootSubProvider {
+         });
+         this.dropSelf(Blocks.PITCHER_PLANT);
+         this.add(Blocks.PITCHER_PLANT, this.applyExplosionDecay(Blocks.PITCHER_PLANT, LootTable.lootTable().withPool(LootPool.lootPool().add(LootItem.lootTableItem(Items.PITCHER_PLANT).when(LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.PITCHER_PLANT).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(DoublePlantBlock.HALF, DoubleBlockHalf.LOWER)))))));
+-        this.add(Blocks.CARROTS, this.applyExplosionDecay(Blocks.CARROTS, LootTable.lootTable().withPool(LootPool.lootPool().add(LootItem.lootTableItem(Items.CARROT))).withPool(LootPool.lootPool().when(builder3).add(LootItem.lootTableItem(Items.CARROT).apply(ApplyBonusCount.addBonusBinomialDistributionCount(Enchantments.BLOCK_FORTUNE, 0.5714286F, 3))))));
++
++        LootItemCondition.Builder builder3 = LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.CARROTS).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(CarrotBlock.AGE, 7));
++        this.add(Blocks.CARROTS, this.applyExplosionDecay(Blocks.CARROTS, LootTable.lootTable()
++            .withPool(LootPool.lootPool().when(builder3.invert()).add(LootItem.lootTableItem(Items.CARROT)))
++            .withPool(LootPool.lootPool().when(builder3).add(LootItem.lootTableItem(Items.CARROT).apply(ApplyBonusCount.addBonusBinomialDistributionCount(Enchantments.BLOCK_FORTUNE, 0.5714286F, 3))))));
++
+         LootItemCondition.Builder builder5 = LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.POTATOES).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(PotatoBlock.AGE, 7));
+-        this.add(Blocks.POTATOES, this.applyExplosionDecay(Blocks.POTATOES, LootTable.lootTable().withPool(LootPool.lootPool().add(LootItem.lootTableItem(Items.POTATO))).withPool(LootPool.lootPool().when(builder5).add(LootItem.lootTableItem(Items.POTATO).apply(ApplyBonusCount.addBonusBinomialDistributionCount(Enchantments.BLOCK_FORTUNE, 0.5714286F, 3)))).withPool(LootPool.lootPool().when(builder5).add(LootItem.lootTableItem(Items.POISONOUS_POTATO).when(LootItemRandomChanceCondition.randomChance(0.02F))))));
++        this.add(Blocks.POTATOES, this.applyExplosionDecay(Blocks.POTATOES, LootTable.lootTable()
++            .withPool(LootPool.lootPool().when(builder5.invert()).add(LootItem.lootTableItem(Items.POTATO)))
++            .withPool(LootPool.lootPool().when(builder5).add(LootItem.lootTableItem(Items.POTATO).apply(ApplyBonusCount.addBonusBinomialDistributionCount(Enchantments.BLOCK_FORTUNE, 0.5714286F, 3))))
++            .withPool(LootPool.lootPool().when(builder5).add(LootItem.lootTableItem(Items.POISONOUS_POTATO).when(LootItemRandomChanceCondition.randomChance(0.02F))))));
++
+         this.add(Blocks.SWEET_BERRY_BUSH, (block) -> {
+             return this.applyExplosionDecay(block, LootTable.lootTable().withPool(LootPool.lootPool().when(LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.SWEET_BERRY_BUSH).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(SweetBerryBushBlock.AGE, 3))).add(LootItem.lootTableItem(Items.SWEET_BERRIES)).apply(SetItemCountFunction.setCount(UniformGenerator.between(2.0F, 3.0F))).apply(ApplyBonusCount.addUniformBonusCount(Enchantments.BLOCK_FORTUNE))).withPool(LootPool.lootPool().when(LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.SWEET_BERRY_BUSH).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(SweetBerryBushBlock.AGE, 2))).add(LootItem.lootTableItem(Items.SWEET_BERRIES)).apply(SetItemCountFunction.setCount(UniformGenerator.between(1.0F, 2.0F))).apply(ApplyBonusCount.addUniformBonusCount(Enchantments.BLOCK_FORTUNE))));
+         });
+diff --git a/src/main/resources/data/minecraft/loot_tables/blocks/carrots.json b/src/main/resources/data/minecraft/loot_tables/blocks/carrots.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..487cd4d8a25533d404af328ae538f6bb54825fae
+--- /dev/null
++++ b/src/main/resources/data/minecraft/loot_tables/blocks/carrots.json
+@@ -0,0 +1,63 @@
++{
++  "type": "minecraft:block",
++  "functions": [
++    {
++      "function": "minecraft:explosion_decay"
++    }
++  ],
++  "pools": [
++    {
++      "bonus_rolls": 0,
++      "conditions": [
++        {
++          "condition": "minecraft:inverted",
++          "term": {
++            "block": "minecraft:carrots",
++            "condition": "minecraft:block_state_property",
++            "properties": {
++              "age": "7"
++            }
++          }
++        }
++      ],
++      "entries": [
++        {
++          "type": "minecraft:item",
++          "name": "minecraft:carrot"
++        }
++      ],
++      "rolls": 1
++    },
++    {
++      "bonus_rolls": 0,
++      "conditions": [
++        {
++          "block": "minecraft:carrots",
++          "condition": "minecraft:block_state_property",
++          "properties": {
++            "age": "7"
++          }
++        }
++      ],
++      "entries": [
++        {
++          "type": "minecraft:item",
++          "functions": [
++            {
++              "enchantment": "minecraft:fortune",
++              "formula": "minecraft:binomial_with_bonus_count",
++              "function": "minecraft:apply_bonus",
++              "parameters": {
++                "extra": 3,
++                "probability": 0.5714286
++              }
++            }
++          ],
++          "name": "minecraft:carrot"
++        }
++      ],
++      "rolls": 1
++    }
++  ],
++  "random_sequence": "minecraft:blocks/carrots"
++}
+\ No newline at end of file
+diff --git a/src/main/resources/data/minecraft/loot_tables/blocks/potatoes.json b/src/main/resources/data/minecraft/loot_tables/blocks/potatoes.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..252cc888eb17247f5a7710a9a489672e4e2429b6
+--- /dev/null
++++ b/src/main/resources/data/minecraft/loot_tables/blocks/potatoes.json
+@@ -0,0 +1,88 @@
++{
++  "type": "minecraft:block",
++  "functions": [
++    {
++      "function": "minecraft:explosion_decay"
++    }
++  ],
++  "pools": [
++    {
++      "bonus_rolls": 0,
++      "conditions": [
++        {
++          "condition": "minecraft:inverted",
++          "term": {
++            "block": "minecraft:potatoes",
++            "condition": "minecraft:block_state_property",
++            "properties": {
++              "age": "7"
++            }
++          }
++        }
++      ],
++      "entries": [
++        {
++          "type": "minecraft:item",
++          "name": "minecraft:potato"
++        }
++      ],
++      "rolls": 1
++    },
++    {
++      "bonus_rolls": 0,
++      "conditions": [
++        {
++          "block": "minecraft:potatoes",
++          "condition": "minecraft:block_state_property",
++          "properties": {
++            "age": "7"
++          }
++        }
++      ],
++      "entries": [
++        {
++          "type": "minecraft:item",
++          "functions": [
++            {
++              "enchantment": "minecraft:fortune",
++              "formula": "minecraft:binomial_with_bonus_count",
++              "function": "minecraft:apply_bonus",
++              "parameters": {
++                "extra": 3,
++                "probability": 0.5714286
++              }
++            }
++          ],
++          "name": "minecraft:potato"
++        }
++      ],
++      "rolls": 1
++    },
++    {
++      "bonus_rolls": 0,
++      "conditions": [
++        {
++          "block": "minecraft:potatoes",
++          "condition": "minecraft:block_state_property",
++          "properties": {
++            "age": "7"
++          }
++        }
++      ],
++      "entries": [
++        {
++          "type": "minecraft:item",
++          "conditions": [
++            {
++              "chance": 0.02,
++              "condition": "minecraft:random_chance"
++            }
++          ],
++          "name": "minecraft:poisonous_potato"
++        }
++      ],
++      "rolls": 1
++    }
++  ],
++  "random_sequence": "minecraft:blocks/potatoes"
++}
+\ No newline at end of file

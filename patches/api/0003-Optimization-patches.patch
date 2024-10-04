@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Marko <visualpvp1@gmail.com>
+Date: Fri, 4 Oct 2024 13:51:33 +0200
+Subject: [PATCH] Optimization patches
+
+
+diff --git a/src/main/java/com/ngxdev/SilverConfig.java b/src/main/java/com/ngxdev/SilverConfig.java
+index 4c12c05adf872b397c617c6188e9357abe135b01..2717471b1e27cd94411b9d4340752ada783be772 100644
+--- a/src/main/java/com/ngxdev/SilverConfig.java
++++ b/src/main/java/com/ngxdev/SilverConfig.java
+@@ -15,9 +15,18 @@ public class SilverConfig {
+     // Maximum amount of chunks to handle for attempting to handle weather.
+     public static int weatherChunksPerTick = 1;
+ 
++    // How many ticks a player has to wait before activating entities again.
++    public static int activationSegmentation = 5;
++
++    // How many ticks the entity should be activated for when activated.
++    public static int activationDuration = 20;
++
+     // so every 10+10 blocks, the entities will tick half as less for intensive parts of the tick, 20 = 1/2, 40 = 1/4.
+     public static int tickSegmentation = 10;
+ 
++    // How many ticks for ai goal selection to occur.
++    public static int aiSegmentation = 2;
++
+     // same as above, but for aiStep
+     public static int aiStepSegmentation = 10;
+ 
+diff --git a/src/main/java/org/bukkit/World.java b/src/main/java/org/bukkit/World.java
+index c5fe36050eeaff80cfb989fe2f38370215af6fe5..7b0f9618cba5f732d25ef3d1117b035d5df371e9 100644
+--- a/src/main/java/org/bukkit/World.java
++++ b/src/main/java/org/bukkit/World.java
+@@ -52,6 +52,9 @@ import org.jetbrains.annotations.Nullable;
+  */
+ public interface World extends RegionAccessor, WorldInfo, PluginMessageRecipient, Metadatable, PersistentDataHolder, Keyed, net.kyori.adventure.audience.ForwardingAudience { // Paper
+ 
++    // Silver - async api
++    void execute(Runnable task);
++
+     // Paper start
+     /**
+      * @return The amount of Entities in this world

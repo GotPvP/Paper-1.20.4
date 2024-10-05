@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: qIooIp <dino.kanizaj@gmail.com>
+Date: Sat, 5 Oct 2024 22:09:23 +0200
+Subject: [PATCH] Option to disable firework damage
+
+
+diff --git a/src/main/java/com/ngxdev/SilverConfig.java b/src/main/java/com/ngxdev/SilverConfig.java
+index 2717471b1e27cd94411b9d4340752ada783be772..d79fcda4f7d8dfc9601880c063869e15a0956592 100644
+--- a/src/main/java/com/ngxdev/SilverConfig.java
++++ b/src/main/java/com/ngxdev/SilverConfig.java
+@@ -1,6 +1,11 @@
+ package com.ngxdev;
+ 
+ public class SilverConfig {
++
++    // Enable firework damage
++    public static boolean fireworkDamage = false;
++
++    // Enable lava fishing
+     public static boolean lavaFishing = false;
+ 
+     // No saving, fast shutdown routine, no persistence.

@@ -38,20 +38,14 @@ index 7e57439cc576bd3b23a50fe881208fa6db1d37ad..31cf4354a48546b0ca0fc867b084bb24
              return this.applyExplosionDecay(block, LootTable.lootTable().withPool(LootPool.lootPool().when(LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.SWEET_BERRY_BUSH).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(SweetBerryBushBlock.AGE, 3))).add(LootItem.lootTableItem(Items.SWEET_BERRIES)).apply(SetItemCountFunction.setCount(UniformGenerator.between(2.0F, 3.0F))).apply(ApplyBonusCount.addUniformBonusCount(Enchantments.BLOCK_FORTUNE))).withPool(LootPool.lootPool().when(LootItemBlockStatePropertyCondition.hasBlockStateProperties(Blocks.SWEET_BERRY_BUSH).setProperties(StatePropertiesPredicate.Builder.properties().hasProperty(SweetBerryBushBlock.AGE, 2))).add(LootItem.lootTableItem(Items.SWEET_BERRIES)).apply(SetItemCountFunction.setCount(UniformGenerator.between(1.0F, 2.0F))).apply(ApplyBonusCount.addUniformBonusCount(Enchantments.BLOCK_FORTUNE))));
          });
 diff --git a/src/main/resources/data/minecraft/loot_tables/blocks/carrots.json b/src/main/resources/data/minecraft/loot_tables/blocks/carrots.json
-new file mode 100644
-index 0000000000000000000000000000000000000000..487cd4d8a25533d404af328ae538f6bb54825fae
---- /dev/null
+index 613fe9dcae037b2d99fb57666230c1bb2d11c688..487cd4d8a25533d404af328ae538f6bb54825fae 100644
+--- a/src/main/resources/data/minecraft/loot_tables/blocks/carrots.json
 +++ b/src/main/resources/data/minecraft/loot_tables/blocks/carrots.json
-@@ -0,0 +1,63 @@
-+{
-+  "type": "minecraft:block",
-+  "functions": [
-+    {
-+      "function": "minecraft:explosion_decay"
-+    }
-+  ],
-+  "pools": [
-+    {
+@@ -7,17 +7,29 @@
+   ],
+   "pools": [
+     {
+-      "bonus_rolls": 0.0,
 +      "bonus_rolls": 0,
 +      "conditions": [
 +        {
@@ -65,63 +59,42 @@ index 0000000000000000000000000000000000000000..487cd4d8a25533d404af328ae538f6bb
 +          }
 +        }
 +      ],
-+      "entries": [
-+        {
-+          "type": "minecraft:item",
-+          "name": "minecraft:carrot"
-+        }
-+      ],
+       "entries": [
+         {
+           "type": "minecraft:item",
+           "name": "minecraft:carrot"
+         }
+       ],
+-      "rolls": 1.0
 +      "rolls": 1
-+    },
-+    {
+     },
+     {
+-      "bonus_rolls": 0.0,
 +      "bonus_rolls": 0,
-+      "conditions": [
-+        {
-+          "block": "minecraft:carrots",
-+          "condition": "minecraft:block_state_property",
-+          "properties": {
-+            "age": "7"
-+          }
-+        }
-+      ],
-+      "entries": [
-+        {
-+          "type": "minecraft:item",
-+          "functions": [
-+            {
-+              "enchantment": "minecraft:fortune",
-+              "formula": "minecraft:binomial_with_bonus_count",
-+              "function": "minecraft:apply_bonus",
-+              "parameters": {
-+                "extra": 3,
-+                "probability": 0.5714286
-+              }
-+            }
-+          ],
-+          "name": "minecraft:carrot"
-+        }
-+      ],
+       "conditions": [
+         {
+           "block": "minecraft:carrots",
+@@ -44,8 +56,8 @@
+           "name": "minecraft:carrot"
+         }
+       ],
+-      "rolls": 1.0
 +      "rolls": 1
-+    }
-+  ],
-+  "random_sequence": "minecraft:blocks/carrots"
+     }
+   ],
+   "random_sequence": "minecraft:blocks/carrots"
+-}
 +}
 \ No newline at end of file
 diff --git a/src/main/resources/data/minecraft/loot_tables/blocks/potatoes.json b/src/main/resources/data/minecraft/loot_tables/blocks/potatoes.json
-new file mode 100644
-index 0000000000000000000000000000000000000000..252cc888eb17247f5a7710a9a489672e4e2429b6
---- /dev/null
+index 6dbb07dc528beb091e2d2790728d89aa8e674d61..252cc888eb17247f5a7710a9a489672e4e2429b6 100644
+--- a/src/main/resources/data/minecraft/loot_tables/blocks/potatoes.json
 +++ b/src/main/resources/data/minecraft/loot_tables/blocks/potatoes.json
-@@ -0,0 +1,88 @@
-+{
-+  "type": "minecraft:block",
-+  "functions": [
-+    {
-+      "function": "minecraft:explosion_decay"
-+    }
-+  ],
-+  "pools": [
-+    {
+@@ -7,17 +7,29 @@
+   ],
+   "pools": [
+     {
+-      "bonus_rolls": 0.0,
 +      "bonus_rolls": 0,
 +      "conditions": [
 +        {
@@ -135,70 +108,43 @@ index 0000000000000000000000000000000000000000..252cc888eb17247f5a7710a9a489672e
 +          }
 +        }
 +      ],
-+      "entries": [
-+        {
-+          "type": "minecraft:item",
-+          "name": "minecraft:potato"
-+        }
-+      ],
+       "entries": [
+         {
+           "type": "minecraft:item",
+           "name": "minecraft:potato"
+         }
+       ],
+-      "rolls": 1.0
 +      "rolls": 1
-+    },
-+    {
+     },
+     {
+-      "bonus_rolls": 0.0,
 +      "bonus_rolls": 0,
-+      "conditions": [
-+        {
-+          "block": "minecraft:potatoes",
-+          "condition": "minecraft:block_state_property",
-+          "properties": {
-+            "age": "7"
-+          }
-+        }
-+      ],
-+      "entries": [
-+        {
-+          "type": "minecraft:item",
-+          "functions": [
-+            {
-+              "enchantment": "minecraft:fortune",
-+              "formula": "minecraft:binomial_with_bonus_count",
-+              "function": "minecraft:apply_bonus",
-+              "parameters": {
-+                "extra": 3,
-+                "probability": 0.5714286
-+              }
-+            }
-+          ],
-+          "name": "minecraft:potato"
-+        }
-+      ],
+       "conditions": [
+         {
+           "block": "minecraft:potatoes",
+@@ -44,10 +56,10 @@
+           "name": "minecraft:potato"
+         }
+       ],
+-      "rolls": 1.0
 +      "rolls": 1
-+    },
-+    {
+     },
+     {
+-      "bonus_rolls": 0.0,
 +      "bonus_rolls": 0,
-+      "conditions": [
-+        {
-+          "block": "minecraft:potatoes",
-+          "condition": "minecraft:block_state_property",
-+          "properties": {
-+            "age": "7"
-+          }
-+        }
-+      ],
-+      "entries": [
-+        {
-+          "type": "minecraft:item",
-+          "conditions": [
-+            {
-+              "chance": 0.02,
-+              "condition": "minecraft:random_chance"
-+            }
-+          ],
-+          "name": "minecraft:poisonous_potato"
-+        }
-+      ],
+       "conditions": [
+         {
+           "block": "minecraft:potatoes",
+@@ -69,8 +81,8 @@
+           "name": "minecraft:poisonous_potato"
+         }
+       ],
+-      "rolls": 1.0
 +      "rolls": 1
-+    }
-+  ],
-+  "random_sequence": "minecraft:blocks/potatoes"
+     }
+   ],
+   "random_sequence": "minecraft:blocks/potatoes"
+-}
 +}
 \ No newline at end of file

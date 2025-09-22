@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hihihih565 <daniel.n.peck@me.com>
+Date: Mon, 22 Sep 2025 07:40:27 +0100
+Subject: [PATCH] Fix dboss issue with swords not being able to hit non-head
+ parts
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java b/src/main/java/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
+index a86ae40b945b1ecdf42a69d753d0412f39ee3001..2d9f02eee7237fb463361f60c46973ee23bf7f06 100644
+--- a/src/main/java/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
++++ b/src/main/java/net/minecraft/world/entity/boss/enderdragon/EnderDragon.java
+@@ -601,9 +601,9 @@ public class EnderDragon extends Mob implements Enemy {
+             return false;
+         } else {
+             amount = this.phaseManager.getCurrentPhase().onHurt(source, amount);
+-            if (part != this.head) {
+-                amount = amount / 4.0F + Math.min(amount, 1.0F);
+-            }
++            //if (part != this.head) {
++            //    amount = amount / 4.0F + Math.min(amount, 1.0F);
++            //}
+ 
+             if (amount < 0.01F) {
+                 return false;

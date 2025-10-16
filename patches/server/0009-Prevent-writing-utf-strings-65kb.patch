@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: LBuke <lbingham1997@gmail.com>
+Date: Thu, 16 Oct 2025 11:04:58 -0500
+Subject: [PATCH] Prevent writing utf strings > 65kb
+
+
+diff --git a/src/main/java/net/minecraft/nbt/NbtIo.java b/src/main/java/net/minecraft/nbt/NbtIo.java
+index c2044d2e8ce2d4747aa73ba90e5b975b1b7d2c19..ad695bb97981402a3f0dc95e76d63b42496b1d65 100644
+--- a/src/main/java/net/minecraft/nbt/NbtIo.java
++++ b/src/main/java/net/minecraft/nbt/NbtIo.java
+@@ -398,6 +398,14 @@ public class NbtIo {
+         @Override
+         public void writeUTF(String s) throws IOException {
+             try {
++                // Calculate the actual modified UTF-8 length before writing
++                int utfLength = getModifiedUtf8Length(s);
++                if (utfLength >= 65_535) {
++                    // Avoid crash by writing an empty string or truncating
++                    super.writeUTF("");
++                    return;
++                }
++
+                 super.writeUTF(s);
+             } catch (UTFDataFormatException utfdataformatexception) {
+                 Util.logAndPauseIfInIde("Failed to write NBT String", utfdataformatexception);
+@@ -405,5 +413,17 @@ public class NbtIo {
+             }
+ 
+         }
++
++        // Helper meethod to compute the exact UTF lngth used by writeUTF()
++        private static int getModifiedUtf8Length(String s) {
++            int utfLength = 0;
++            for (int i = 0; i < s.length(); i++) {
++                int c = s.charAt(i);
++                if (c >= 0x0001 && c <= 0x007F) utfLength += 1;
++                else if (c > 0x07FF) utfLength += 3;
++                else utfLength += 2;
++            }
++            return utfLength;
++        }
+     }
+ }
